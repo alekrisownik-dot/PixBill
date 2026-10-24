@@ -127,3 +127,41 @@ def test_serves_mobile_app(client):
     assert r.status_code == 200 and "PixBill" in r.text
     assert client.get("/manifest.webmanifest").status_code == 200
     assert client.get("/api/health").json() == {"status": "ok"}
+
+
+def test_recurring_generation(client):
+    from datetime import date
+
+    from app.db import new_session
+    from app.models import Expense, RecurringExpense
+    from app.recurring import generate_recurring
+
+    with new_session() as db:
+        item = RecurringExpense(description="Czynsz", amount_grosze=200000, category_id=4, day_of_month=10, start_month="2026-08")
+        db.add(item)
+        db.commit()
+        assert generate_recurring(db, date(2026, 10, 5)) == 2
+        assert generate_recurring(db, date(2026, 10, 5)) == 0
+        assert generate_recurring(db, date(2026, 10, 10)) == 1
+        days = sorted(e.spent_on for e in db.query(Expense).filter_by(recurring_id=item.id))
+        assert days == [date(2026, 8, 10), date(2026, 9, 10), date(2026, 10, 10)]
+        item.active = False
+        db.commit()
+        assert generate_recurring(db, date(2027, 1, 20)) == 0
+
+
+def test_recurring_api(client):
+    from datetime import date
+
+    cat = first_category(client)
+    today = date.today()
+    r = client.post("/api/recurring", json={"description": "Internet", "amount_grosze": 6000, "category_id": cat, "day_of_month": 1})
+    assert r.status_code == 201
+    rid = r.json()["id"]
+    expenses = client.get("/api/expenses", params={"month": today.strftime("%Y-%m")}).json()
+    assert [e["source"] for e in expenses if e["recurring_id"] == rid] == ["recurring"]
+
+    assert client.patch(f"/api/recurring/{rid}", json={"amount_grosze": 7000, "active": False}).json()["active"] is False
+    assert client.post("/api/recurring", json={"description": "X", "amount_grosze": 1, "category_id": cat, "day_of_month": 31}).status_code == 422
+    assert client.delete(f"/api/recurring/{rid}").status_code == 204
+    assert len(client.get("/api/expenses", params={"month": today.strftime("%Y-%m")}).json()) == 1

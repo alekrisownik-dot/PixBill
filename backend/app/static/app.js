@@ -145,7 +145,7 @@ function monthSwitch(month, onChange) {
 
 function expenseRow(e, cat) {
   const label = e.description || e.merchant || cat?.name || "Wydatek";
-  const sub = [dayLabel(e.spent_on), cat?.name, e.source === "receipt" ? "paragon" : null].filter(Boolean).join(" · ");
+  const sub = [dayLabel(e.spent_on), cat?.name, { receipt: "paragon", recurring: "opłata stała" }[e.source]].filter(Boolean).join(" · ");
   return `<li><a href="#/expense/${e.id}">
     <span class="dot" style="background:${esc(cat?.color || "#999")}"></span>
     <span class="grow"><div class="t">${esc(label)}</div><div class="small muted">${esc(sub)}</div></span>
@@ -289,6 +289,7 @@ async function viewAdd() {
     <label class="btn huge" for="gallery" style="margin-top:10px">🖼️ Wybierz zdjęcie z galerii</label>
     <input id="gallery" type="file" accept="image/*" hidden>
     <a class="btn huge" href="#/new" style="margin-top:10px">✏️ Wpisz ręcznie</a>
+    <a class="btn" href="#/recurring/new" style="margin-top:10px">🔁 Dodaj opłatę stałą (czynsz, abonament)</a>
     <p class="small muted" style="text-align:center">Paragon odczyta się w tle. Możesz w tym czasie robić zdjęcia kolejnych.</p>`;
   const upload = async (input) => {
     const file = input.files[0];
@@ -593,8 +594,23 @@ async function viewCategory(id) {
 
 async function viewSettings() {
   setChrome("Ustawienia");
-  const cats = await categories(true);
-  $view.innerHTML = `<section class="card"><h2>Sekcje</h2>
+  const [cats, recurring] = await Promise.all([categories(true), api("/api/recurring")]);
+  const catMap = Object.fromEntries(cats.map((c) => [c.id, c]));
+  const monthlyTotal = recurring.filter((r) => r.active).reduce((s, r) => s + r.amount_grosze, 0);
+  $view.innerHTML = `<section class="card"><h2>Opłaty stałe${monthlyTotal ? ` · ${fmt(monthlyTotal)} / mies.` : ""}</h2>
+      ${recurring.length ? `<ul class="list">${recurring
+        .map((r) => {
+          const c = catMap[r.category_id];
+          return `<li><a href="#/recurring/${r.id}">
+            <span class="dot" style="background:${esc(c?.color || "#999")}"></span>
+            <span class="grow"><div class="t">${esc(r.description)}</div>
+              <div class="small muted">${r.active ? `co miesiąc, ${r.day_of_month}. dnia` : "wstrzymana"} · ${esc(c?.name || "")}</div></span>
+            <span class="amount">${fmt(r.amount_grosze)}</span></a></li>`;
+        })
+        .join("")}</ul>` : `<div class="small muted">Czynsz, internet, abonamenty: dodaj je raz, a aplikacja co miesiąc sama dopisze je do wydatków.</div><p></p>`}
+      <a class="btn" href="#/recurring/new">+ Nowa opłata stała</a>
+    </section>
+    <section class="card"><h2>Sekcje</h2>
       <ul class="list">${cats
         .map(
           (c) => `<li><a href="#/edit-category/${c.id}">
@@ -656,6 +672,74 @@ async function viewEditCategory(id) {
   }
 }
 
+async function viewRecurring(id) {
+  const isNew = id === "new";
+  const item = isNew
+    ? { description: "", amount_grosze: null, category_id: null, day_of_month: 1, active: true }
+    : (await api("/api/recurring")).find((r) => r.id === id);
+  if (!item) throw new Error("Nie ma takiej opłaty stałej");
+  setChrome(isNew ? "Nowa opłata stała" : "Opłata stała", { back: "#/settings" });
+  const cats = await activeCategories();
+  $view.innerHTML = `<form class="card" id="rf" novalidate>
+      <label for="description">Nazwa</label>
+      <input id="description" maxlength="500" placeholder="np. Czynsz, Netflix, Internet" value="${esc(item.description)}" required>
+      <div class="row2">
+        <div><label for="amount">Kwota (zł)</label><input id="amount" inputmode="decimal" placeholder="0,00" value="${esc(fromGrosze(item.amount_grosze))}"></div>
+        <div><label for="day">Dzień miesiąca</label><input id="day" type="number" min="1" max="28" inputmode="numeric" value="${item.day_of_month}"></div>
+      </div>
+      <label>Sekcja</label>
+      <div class="chips" id="cats">${cats
+        .map((c) => `<button type="button" class="chip" data-id="${c.id}" aria-pressed="${c.id === item.category_id}"><span class="dot" style="background:${esc(c.color)}"></span>${esc(c.name)}</button>`)
+        .join("")}</div>
+      <p class="small muted">${isNew
+        ? "Opłata dopisze się do wydatków co miesiąc w wybranym dniu. Jeśli ten dzień już minął w tym miesiącu, dopisze się od razu."
+        : "Zmiany dotyczą kolejnych miesięcy. Wydatki już dopisane możesz poprawić na liście wydatków (np. gdy rachunek był inny)."}</p>
+      <button class="btn primary">Zapisz</button>
+      ${isNew ? "" : `<button type="button" class="btn" id="toggle">${item.active ? "Wstrzymaj" : "Wznów"}</button>
+        <button type="button" class="btn danger" id="del">Usuń opłatę stałą</button>`}
+    </form>`;
+  const form = document.getElementById("rf");
+  let categoryId = item.category_id;
+  form.querySelectorAll("#cats .chip").forEach((chip) => {
+    chip.onclick = () => {
+      categoryId = Number(chip.dataset.id);
+      form.querySelectorAll("#cats .chip").forEach((c) => c.setAttribute("aria-pressed", c === chip));
+    };
+  });
+  form.onsubmit = async (ev) => {
+    ev.preventDefault();
+    const amount = toGrosze(form.amount.value);
+    const day = Number(form.day.value);
+    if (!form.description.value.trim()) return toast("Wpisz nazwę");
+    if (!amount) return toast("Wpisz poprawną kwotę, np. 43,00");
+    if (!(day >= 1 && day <= 28)) return toast("Dzień miesiąca: od 1 do 28");
+    if (!categoryId) return toast("Wybierz sekcję");
+    const body = { description: form.description.value.trim(), amount_grosze: amount, day_of_month: day, category_id: categoryId };
+    try {
+      if (isNew) await api("/api/recurring", { method: "POST", body });
+      else await api(`/api/recurring/${id}`, { method: "PATCH", body });
+      toast("Zapisano");
+      location.hash = "#/settings";
+    } catch (err) {
+      if (err instanceof AuthError) throw err;
+      toast(err.message);
+    }
+  };
+  if (!isNew) {
+    document.getElementById("toggle").onclick = async () => {
+      await api(`/api/recurring/${id}`, { method: "PATCH", body: { active: !item.active } });
+      toast(item.active ? "Wstrzymano" : "Wznowiono");
+      location.hash = "#/settings";
+    };
+    document.getElementById("del").onclick = async () => {
+      if (!confirm("Usunąć opłatę stałą? Wydatki dopisane wcześniej zostaną w historii.")) return;
+      await api(`/api/recurring/${id}`, { method: "DELETE" });
+      toast("Usunięto");
+      location.hash = "#/settings";
+    };
+  }
+}
+
 const routes = [
   [/^#\/?$/, viewDashboard, "dashboard"],
   [/^#\/login$/, viewLogin],
@@ -669,6 +753,7 @@ const routes = [
   [/^#\/category\/(\d+)$/, viewCategory, "categories"],
   [/^#\/settings$/, viewSettings, "settings"],
   [/^#\/edit-category\/(\d+|new)$/, viewEditCategory, "settings"],
+  [/^#\/recurring\/(\d+|new)$/, viewRecurring, "settings"],
 ];
 
 function setChrome(title, { back = null, tabbar = true } = {}) {

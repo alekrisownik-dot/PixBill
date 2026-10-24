@@ -15,6 +15,7 @@ Ekrany: pulpit (suma miesiąca, wykres kołowy sekcji, porównanie z poprzednim 
 dodawanie (aparat, galeria, ręczny wpis), sprawdzanie odczytanego paragonu, lista wydatków z filtrem sekcji,
 sekcje z porównaniem miesięcy i trendem z 12 miesięcy, ustawienia sekcji.
 Przy paragonie ze znanego sklepu aplikacja podpowiada sekcję z ostatniego zakupu.
+Opłaty stałe (czynsz, internet, abonamenty) dodajesz raz w Ustawieniach, a aplikacja co miesiąc sama dopisuje je do wydatków w wybranym dniu.
 
 ## Backend
 

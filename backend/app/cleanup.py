@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from .config import get_settings
 from .db import new_session
 from .models import Receipt
+from .recurring import generate_recurring
 
 log = logging.getLogger(__name__)
 
@@ -46,8 +47,11 @@ async def cleanup_loop() -> None:
         try:
             with new_session() as db:
                 count = delete_expired_photos(db)
+                added = generate_recurring(db)
             if count:
                 log.info("Usunięto %d zdjęć paragonów", count)
+            if added:
+                log.info("Dopisano %d opłat stałych", added)
         except Exception:
-            log.exception("Błąd podczas kasowania zdjęć")
+            log.exception("Błąd zadania w tle")
         await asyncio.sleep(interval)

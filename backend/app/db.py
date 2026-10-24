@@ -1,6 +1,6 @@
 from collections.abc import Iterator
 
-from sqlalchemy import create_engine, event, select
+from sqlalchemy import create_engine, event, inspect, select, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from .config import get_settings
@@ -67,12 +67,20 @@ def init_db() -> None:
 
     engine = get_engine()
     Base.metadata.create_all(engine)
+    _add_missing_columns(engine)
     get_settings().photos_dir.mkdir(parents=True, exist_ok=True)
     with new_session() as db:
         if db.scalar(select(Category.id).limit(1)) is None:
             for position, (name, color, icon) in enumerate(DEFAULT_CATEGORIES):
                 db.add(Category(name=name, color=color, icon=icon, position=position))
             db.commit()
+
+
+def _add_missing_columns(engine) -> None:
+    columns = {c["name"] for c in inspect(engine).get_columns("expenses")}
+    if "recurring_id" not in columns:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE expenses ADD COLUMN recurring_id INTEGER REFERENCES recurring_expenses(id)"))
 
 
 def reset_engine() -> None:

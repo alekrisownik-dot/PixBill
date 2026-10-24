@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     ollama_model: str = "qwen2.5vl:3b"
     ollama_timeout_seconds: float = 300
     photo_retention_days: int = 10
-    cleanup_interval_seconds: int = 6 * 3600
+    cleanup_interval_seconds: int = 3600
 
     @property
     def db_path(self) -> Path:

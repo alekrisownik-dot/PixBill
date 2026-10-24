@@ -1,4 +1,4 @@
-const CACHE = "pixbill-v1";
+const CACHE = "pixbill-v2";
 const SHELL = ["/", "/app.js", "/styles.css", "/vendor/chart.umd.js", "/manifest.webmanifest", "/icons/icon-192.png"];
 
 self.addEventListener("install", (e) => {

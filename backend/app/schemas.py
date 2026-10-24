@@ -57,6 +57,7 @@ class ExpenseOut(BaseModel):
     source: str
     category_id: int
     receipt_id: int | None
+    recurring_id: int | None
     created_at: datetime
 
 
@@ -103,3 +104,32 @@ class TrendPoint(BaseModel):
 
 class LoginIn(BaseModel):
     password: str
+
+
+class RecurringIn(BaseModel):
+    description: str = Field(min_length=1, max_length=500)
+    amount_grosze: int = Field(gt=0)
+    category_id: int
+    day_of_month: int = Field(default=1, ge=1, le=28)
+    start_month: str | None = Field(default=None, pattern=r"^\d{4}-\d{2}$")
+
+
+class RecurringUpdate(BaseModel):
+    description: str | None = Field(default=None, min_length=1, max_length=500)
+    amount_grosze: int | None = Field(default=None, gt=0)
+    category_id: int | None = None
+    day_of_month: int | None = Field(default=None, ge=1, le=28)
+    active: bool | None = None
+
+
+class RecurringOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    description: str
+    amount_grosze: int
+    category_id: int
+    day_of_month: int
+    active: bool
+    start_month: str
+    last_generated_month: str | None

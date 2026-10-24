@@ -50,6 +50,7 @@ class Expense(Base):
     source: Mapped[str] = mapped_column(String(20), default="manual")
     category_id: Mapped[int] = mapped_column(ForeignKey("categories.id"))
     receipt_id: Mapped[int | None] = mapped_column(ForeignKey("receipts.id"), unique=True)
+    recurring_id: Mapped[int | None] = mapped_column(ForeignKey("recurring_expenses.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
@@ -57,3 +58,18 @@ class Expense(Base):
 
     category: Mapped[Category] = relationship()
     receipt: Mapped[Receipt | None] = relationship(back_populates="expense")
+
+
+class RecurringExpense(Base):
+
+    __tablename__ = "recurring_expenses"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    description: Mapped[str] = mapped_column(String(500))
+    amount_grosze: Mapped[int] = mapped_column(Integer)
+    category_id: Mapped[int] = mapped_column(ForeignKey("categories.id"))
+    day_of_month: Mapped[int] = mapped_column(Integer, default=1)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    start_month: Mapped[str] = mapped_column(String(7))
+    last_generated_month: Mapped[str | None] = mapped_column(String(7))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
