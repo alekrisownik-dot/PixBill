@@ -29,7 +29,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="PixBill", lifespan=lifespan)
 app.add_middleware(
     SessionMiddleware,
-    secret_key=get_settings().secret_key,
+    secret_key=get_settings().session_secret(),
     max_age=60 * 60 * 24 * 90,
     same_site="strict",
 )

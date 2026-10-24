@@ -50,6 +50,6 @@ PIXBILL_DATA_DIR=../data uvicorn app.main:app --reload
 | Zmienna | Domyślnie | Opis |
 |---|---|---|
 | `PIXBILL_PASSWORD` | `zmien-mnie` | Hasło do aplikacji |
-| `PIXBILL_SECRET_KEY` | | Sekret sesji (`openssl rand -hex 32`) |
+| `PIXBILL_SECRET_KEY` | | Sekret sesji; gdy pusty, aplikacja sama tworzy losowy w `data/secret_key` |
 | `PIXBILL_OLLAMA_MODEL` | `qwen2.5vl:3b` | Model do odczytu paragonów, np. `gemma3:4b` |
 | `PIXBILL_PHOTO_RETENTION_DAYS` | `10` | Po ilu dniach od zatwierdzenia kasować zdjęcie |
