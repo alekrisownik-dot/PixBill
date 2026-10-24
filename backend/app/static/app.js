@@ -22,6 +22,10 @@ const ICONS = {
   left: '<path d="m15 18-6-6 6-6"/>',
   right: '<path d="m9 18 6-6-6-6"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
+  search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/>',
+  x: '<path d="M18 6 6 18M6 6l12 12"/>',
+  download: '<path d="M12 4v11"/><path d="m7 10 5 5 5-5"/><path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/>',
+  tag: '<path d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9z"/><circle cx="8" cy="8" r="1.5"/>',
 };
 const icon = (name) =>
   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]}</svg>`;
@@ -32,6 +36,11 @@ const fmt = (grosze) => money.format((grosze || 0) / 100);
 function toGrosze(text) {
   const clean = String(text).replace(/\s/g, "").replace(",", ".");
   if (!/^\d+(\.\d{1,2})?$/.test(clean)) return null;
+  return Math.round(parseFloat(clean) * 100);
+}
+function toGroszeSigned(text) {
+  const clean = String(text).replace(/\s/g, "").replace(",", ".").replace("−", "-");
+  if (!/^-?\d+(\.\d{1,2})?$/.test(clean)) return null;
   return Math.round(parseFloat(clean) * 100);
 }
 const fromGrosze = (g) => (g == null ? "" : (g / 100).toFixed(2).replace(".", ","));
@@ -420,12 +429,13 @@ async function viewLogin() {
 async function viewDashboard() {
   setChrome("Pulpit");
   const month = state.month;
-  const [summary, trend, expenses, pending, cats] = await Promise.all([
+  const [summary, trend, expenses, pending, cats, products] = await Promise.all([
     api(`/api/stats/month?month=${month}`),
     api(`/api/stats/trend?months=6&until=${month}`),
     api(`/api/expenses?month=${month}`),
     api(`/api/receipts?status=processed`).then(async (p) => p.concat(await api(`/api/receipts?status=failed`), await api(`/api/receipts?status=pending`))),
     categories(),
+    api(`/api/products?month=${month}&limit=5`).catch(() => []),
   ]);
   const catMap = Object.fromEntries(cats.map((c) => [c.id, c]));
 
@@ -478,6 +488,11 @@ async function viewDashboard() {
       <h2>Ostatnie 6 miesięcy</h2>
       <div class="chart-box bar"><canvas id="trend"></canvas></div>
     </section>
+    ${products.length ? `<section class="card">
+      <h2>Najwięcej wydane na produkty</h2>
+      <ul class="list">${products.map(productRow).join("")}</ul>
+      <a class="btn" href="#/products">Wszystkie produkty</a>
+    </section>` : ""}
     <section class="card">
       <h2>Ostatnie wydatki</h2>
       ${expenses.length ? `<ul class="list">${expenses.slice(0, 5).map((e) => expenseRow(e, catMap[e.category_id])).join("")}</ul>
@@ -511,7 +526,7 @@ async function viewExpenses() {
   const catMap = Object.fromEntries(cats.map((c) => [c.id, c]));
   const total = expenses.reduce((s, e) => s + e.amount_grosze, 0);
 
-  $view.innerHTML = "";
+  $view.innerHTML = `<a class="search-field" href="#/search">${icon("search")}<span>Szukaj: sklep, opis, produkt…</span></a>`;
   $view.append(monthSwitch(month, (m) => ((state.month = m), viewExpenses())));
   $view.insertAdjacentHTML(
     "beforeend",
@@ -575,6 +590,7 @@ async function viewAdd() {
 async function expenseForm({ initial = {}, submitLabel, onSubmit, extraButtons = "" }) {
   const cats = await activeCategories();
   const selected = initial.category_id ?? null;
+  const items = (initial.items || []).filter((i) => i.name);
   const html = `<form class="card" id="ef" novalidate>
       <label for="amount">Kwota (zł)</label>
       <input id="amount" inputmode="decimal" placeholder="0,00" value="${esc(fromGrosze(initial.amount_grosze))}" required>
@@ -588,6 +604,11 @@ async function expenseForm({ initial = {}, submitLabel, onSubmit, extraButtons =
         <div><label for="spent_on">Data</label><input id="spent_on" type="date" value="${esc(initial.spent_on || today())}" required></div>
         <div><label for="merchant">Sklep</label><input id="merchant" maxlength="200" value="${esc(initial.merchant || "")}"></div>
       </div>
+      <details class="items"${items.length ? " open" : ""}>
+        <summary><span>Pozycje z paragonu</span><span class="small muted" id="items-sum"></span></summary>
+        <ul class="item-rows" id="item-rows"></ul>
+        <button type="button" class="btn small-btn" id="add-item">${icon("plus")} Dodaj pozycję</button>
+      </details>
       <p></p>
       <button class="btn primary">${esc(submitLabel)}</button>
       ${extraButtons}
@@ -603,10 +624,42 @@ async function expenseForm({ initial = {}, submitLabel, onSubmit, extraButtons =
           form.querySelectorAll("#cats .chip").forEach((c) => c.setAttribute("aria-pressed", c === chip));
         };
       });
+      const rows = form.querySelector("#item-rows");
+      const sumEl = form.querySelector("#items-sum");
+      const addRow = (item = {}) => {
+        const li = document.createElement("li");
+        li.innerHTML = `<input class="i-name" maxlength="200" placeholder="Produkt" value="${esc(item.name || "")}">
+          <input class="i-price" inputmode="decimal" placeholder="0,00" value="${esc(fromGrosze(item.price_grosze))}">
+          <button type="button" class="icon-btn i-del" aria-label="Usuń pozycję">${icon("x")}</button>`;
+        li.querySelector(".i-del").onclick = () => (li.remove(), updateSum());
+        rows.append(li);
+        return li;
+      };
+      const readItems = () =>
+        [...rows.children]
+          .map((li) => ({ name: li.querySelector(".i-name").value.trim(), price: li.querySelector(".i-price").value }))
+          .filter((i) => i.name || i.price.trim());
+      const updateSum = () => {
+        const list = readItems();
+        if (!list.length) return (sumEl.textContent = "opcjonalnie");
+        const sum = list.reduce((s, i) => s + (toGroszeSigned(i.price) || 0), 0);
+        const amount = toGrosze(form.amount.value);
+        const diff = amount ? amount - sum : 0;
+        sumEl.innerHTML = `${list.length} · ${fmt(sum)}${diff ? ` <span class="warn-text">(różnica ${fmt(diff)})</span>` : ""}`;
+      };
+      items.forEach(addRow);
+      form.querySelector("#add-item").onclick = () => (addRow().querySelector(".i-name").focus(), updateSum());
+      rows.addEventListener("input", updateSum);
+      form.amount.addEventListener("input", updateSum);
+      updateSum();
+
       form.onsubmit = async (ev) => {
         ev.preventDefault();
         const amount = toGrosze(form.amount.value);
         if (!amount) return toast("Wpisz poprawną kwotę, np. 45,99");
+        const itemList = readItems();
+        const bad = itemList.find((i) => !i.name || toGroszeSigned(i.price) == null);
+        if (bad) return toast(`Popraw pozycję „${bad.name || "bez nazwy"}”: potrzebna nazwa i cena, np. 6,99`);
         if (!categoryId) return toast("Wybierz sekcję");
         if (!form.spent_on.value) return toast("Wybierz datę");
         const btn = form.querySelector(".btn.primary");
@@ -618,6 +671,7 @@ async function expenseForm({ initial = {}, submitLabel, onSubmit, extraButtons =
             description: form.description.value.trim(),
             spent_on: form.spent_on.value,
             merchant: form.merchant.value.trim() || null,
+            items: itemList.map((i) => ({ name: i.name, price_grosze: toGroszeSigned(i.price) })),
           });
         } catch (err) {
           if (err instanceof AuthError) throw err;
@@ -733,6 +787,7 @@ async function viewReceipt(id) {
       merchant: ocr.merchant,
       category_id: ocr.suggested_category_id,
       description: "",
+      items: ocr.items || [],
     },
     submitLabel: "Zatwierdź i zapisz",
     extraButtons: `${failed ? `<button type="button" class="btn" id="retry">Spróbuj odczytać ponownie</button>` : ""}
@@ -744,15 +799,9 @@ async function viewReceipt(id) {
     },
   });
 
-  const items = (ocr.items || []).filter((i) => i.name);
   $view.innerHTML =
-    (failed ? `<div class="banner">Nie udało się odczytać paragonu. Wpisz dane ręcznie albo spróbuj ponownie.</div>` : `<p class="small muted">Sprawdź odczytane dane i popraw, jeśli coś się nie zgadza.</p>`) +
+    (failed ? `<div class="banner">Nie udało się odczytać paragonu. Wpisz dane ręcznie albo spróbuj ponownie.</div>` : `<p class="small muted">Sprawdź odczytane dane i pozycje. Popraw, jeśli coś się nie zgadza.</p>`) +
     f.html +
-    (items.length
-      ? `<section class="card"><h2>Odczytane pozycje</h2><ul class="list ocr-items">${items
-          .map((i) => `<li><span class="grow">${esc(i.name)}</span><span class="amount">${i.price_grosze != null ? fmt(i.price_grosze) : ""}</span></li>`)
-          .join("")}</ul></section>`
-      : "") +
     receiptPhotoCard(r);
   f.bind();
 
@@ -893,10 +942,12 @@ async function viewSettings() {
         .join("")}</ul>
       <a class="btn" href="#/edit-category/new">+ Nowa sekcja</a>
     </section>
+    ${exportCard()}
     <section class="card"><h2>Instalacja na telefonie</h2>
       <div class="small muted">Android (Chrome): menu ⋮ → „Zainstaluj aplikację”.<br>iPhone (Safari): Udostępnij → „Do ekranu początkowego”.</div>
     </section>
     <button class="btn danger" id="logout">Wyloguj</button>`;
+  bindExport();
   document.getElementById("logout").onclick = async () => {
     await api("/api/logout", { method: "POST" });
     categoriesCache = null;
@@ -1090,6 +1141,196 @@ async function viewOutbox() {
   });
 }
 
+function productRow(p) {
+  return `<li><a href="#/product/${encodeURIComponent(p.product_key)}">
+    <span class="grow"><div class="t">${esc(p.name)}</div><div class="small muted">${p.count}× · ostatnio ${fmt(p.last_price_grosze)}, ${dayLabel(p.last_date)}</div></span>
+    <span class="amount">${fmt(p.total_grosze)}</span></a></li>`;
+}
+
+const foldText = (t) => t.replace(/ł/g, "l").replace(/Ł/g, "L").normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+function highlight(text, words) {
+  const folded = foldText(text);
+  const marks = new Array(text.length).fill(false);
+  for (const w of words) {
+    for (let i = folded.indexOf(w); i >= 0; i = folded.indexOf(w, i + 1)) marks.fill(true, i, i + w.length);
+  }
+  let out = "", open = false;
+  for (let i = 0; i < text.length; i++) {
+    if (marks[i] !== open) (out += marks[i] ? "<mark>" : "</mark>"), (open = marks[i]);
+    out += esc(text[i]);
+  }
+  return out + (open ? "</mark>" : "");
+}
+
+let searchTimer;
+async function viewSearch() {
+  setChrome("Szukaj", { back: "#/expenses" });
+  const cats = await categories();
+  const catMap = Object.fromEntries(cats.map((c) => [c.id, c]));
+  $view.innerHTML = `<label class="search-field input">${icon("search")}<input id="q" type="search" placeholder="Sklep, opis, produkt…" value="${esc(state.search || "")}" autocomplete="off"></label>
+    <div class="chips" id="range">
+      ${[["", "Cały czas"], ["12", "Ostatni rok"], ["3", "3 miesiące"]].map(([v, l]) => `<button class="chip" data-v="${v}" aria-pressed="${(state.searchRange || "") === v}">${l}</button>`).join("")}
+    </div>
+    <div id="results"></div>`;
+  const input = document.getElementById("q");
+  const results = document.getElementById("results");
+  const run = async () => {
+    const q = input.value.trim();
+    state.search = q;
+    if (!q) {
+      results.innerHTML = `<div class="empty small muted">Wpisz nazwę sklepu, opis albo produkt z paragonu, np. „masło” albo „orlen”.</div>`;
+      return;
+    }
+    const params = new URLSearchParams({ q });
+    if (state.searchRange) {
+      const d = new Date();
+      d.setMonth(d.getMonth() - Number(state.searchRange));
+      params.set("date_from", d.toISOString().slice(0, 10));
+    }
+    try {
+      const [found, products] = await Promise.all([
+        api(`/api/expenses/search?${params}`),
+        api(`/api/products?q=${encodeURIComponent(q)}&limit=5`).catch(() => []),
+      ]);
+      if (input.value.trim() !== q) return;
+      const words = foldText(q).split(/\s+/).filter(Boolean);
+      const total = found.reduce((s, e) => s + e.amount_grosze, 0);
+      results.innerHTML =
+        (products.length ? `<section class="card"><h2>Produkty</h2><ul class="list">${products.map(productRow).join("")}</ul></section>` : "") +
+        `<section class="card"><h2>${found.length} ${found.length === 1 ? "wydatek" : "wydatków"} · ${fmt(total)}</h2>${
+          found.length
+            ? `<ul class="list">${found
+                .map((e) => {
+                  const cat = catMap[e.category_id];
+                  const hits = e.items.filter((i) => words.some((w) => foldText(i.name).includes(w)));
+                  const label = e.description || e.merchant || cat?.name || "Wydatek";
+                  const sub = [new Date(e.spent_on + "T12:00:00").toLocaleDateString("pl-PL", { day: "numeric", month: "short", year: "numeric" }), e.description && e.merchant ? e.merchant : null, cat?.name].filter(Boolean).join(" · ");
+                  return `<li><a href="#/expense/${e.id}">
+                    <span class="dot" style="background:${esc(cat?.color || "#999")}"></span>
+                    <span class="grow"><div class="t">${highlight(label, words)}</div><div class="small muted">${highlight(sub, words)}</div>
+                      ${hits.length ? `<div class="small hits">${hits.slice(0, 3).map((i) => `${highlight(i.name, words)} <span class="num">${fmt(i.price_grosze)}</span>`).join(" · ")}</div>` : ""}</span>
+                    <span class="amount">${fmt(e.amount_grosze)}</span></a></li>`;
+                })
+                .join("")}</ul>`
+            : `<div class="empty">Nic nie znalazłem</div>`
+        }</section>`;
+    } catch (err) {
+      if (err instanceof OfflineError) results.innerHTML = `<div class="card empty small">Wyszukiwarka działa tylko z połączeniem z serwerem.</div>`;
+      else handleError(err);
+    }
+  };
+  input.oninput = () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(run, 250);
+  };
+  $view.querySelectorAll("#range .chip").forEach((b) => {
+    b.onclick = () => {
+      state.searchRange = b.dataset.v;
+      $view.querySelectorAll("#range .chip").forEach((c) => c.setAttribute("aria-pressed", c === b));
+      run();
+    };
+  });
+  await run();
+  input.focus();
+}
+
+async function viewProducts() {
+  setChrome("Produkty", { back: "#/" });
+  const month = state.productsAll ? null : state.month;
+  const products = await api(`/api/products?limit=200${month ? `&month=${month}` : ""}`);
+  $view.innerHTML = "";
+  if (month) $view.append(monthSwitch(month, (m) => ((state.month = m), viewProducts())));
+  $view.insertAdjacentHTML(
+    "beforeend",
+    `<div class="chips" style="margin-bottom:12px">
+      <button class="chip" data-all="" aria-pressed="${!state.productsAll}">Wybrany miesiąc</button>
+      <button class="chip" data-all="1" aria-pressed="${!!state.productsAll}">Cały czas</button>
+    </div>
+    <section class="card">${
+      products.length
+        ? `<h2>${products.length} produktów · ${fmt(products.reduce((s, p) => s + p.total_grosze, 0))}</h2><ul class="list">${products.map(productRow).join("")}</ul>`
+        : `<div class="empty">${icon("tag")}<p>Brak pozycji z paragonów${month ? " w tym miesiącu" : ""}.</p><p class="small">Pozycje zapisują się przy zatwierdzaniu paragonu.</p></div>`
+    }</section>`
+  );
+  $view.querySelectorAll("[data-all]").forEach((b) => {
+    b.onclick = () => ((state.productsAll = !!b.dataset.all), viewProducts().then(() => animateIn("fade")));
+  });
+}
+
+async function viewProduct(key) {
+  key = decodeURIComponent(key);
+  const history = await api(`/api/products/history?key=${encodeURIComponent(key)}`);
+  if (!history.length) throw new Error("Nie ma takiego produktu");
+  const last = history[history.length - 1];
+  setChrome(last.name, { back: "#/products" });
+  const prices = history.filter((h) => h.price_grosze > 0).map((h) => h.price_grosze);
+  const first = prices[0], now = prices[prices.length - 1];
+  const total = prices.reduce((a, b) => a + b, 0);
+  $view.innerHTML = `<section class="card receipt">
+      <div class="receipt-head"><span>Ostatnia cena</span><span>${esc(dayLabel(last.spent_on))}</span></div>
+      <div class="big">${fmt(now)}</div>
+      <div class="receipt-foot">${prices.length > 1 && first ? change(Math.round(((now - first) / first) * 1000) / 10, now - first) + ` <span class="muted small">od pierwszego zakupu</span>` : `<span class="muted small">Kupione raz</span>`}</div>
+    </section>
+    <section class="card stats3">
+      <div><div class="small muted">Kupione</div><b class="num">${prices.length}×</b></div>
+      <div><div class="small muted">Łącznie</div><b class="num">${fmt(total)}</b></div>
+      <div><div class="small muted">Najtaniej</div><b class="num">${fmt(Math.min(...prices))}</b></div>
+    </section>
+    ${prices.length > 1 ? `<section class="card"><h2>Cena w czasie</h2><div class="chart-box bar"><canvas id="ph"></canvas></div></section>` : ""}
+    <section class="card"><h2>Zakupy</h2><ul class="list">${history
+      .slice()
+      .reverse()
+      .map(
+        (h) => `<li><a href="#/expense/${h.expense_id}"><span class="grow"><div class="t">${esc(h.merchant || "Sklep")}</div><div class="small muted">${new Date(h.spent_on + "T12:00:00").toLocaleDateString("pl-PL")} · ${esc(h.name)}</div></span><span class="amount">${fmt(h.price_grosze)}</span></a></li>`
+      )
+      .join("")}</ul></section>`;
+  if (prices.length > 1) {
+    const points = history.filter((h) => h.price_grosze > 0);
+    charts.push(
+      new Chart(document.getElementById("ph"), {
+        type: "line",
+        data: {
+          labels: points.map((h) => dayLabel(h.spent_on)),
+          datasets: [{ label: "Cena", data: points.map((h) => h.price_grosze), borderColor: cssVar("--accent"), backgroundColor: cssVar("--accent"), stepped: "before", pointRadius: 4, borderWidth: 2 }],
+        },
+        options: {
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => `${fmt(ctx.raw)} · ${points[ctx.dataIndex].merchant || ""}` } } },
+          scales: {
+            x: { grid: { display: false }, ticks: { color: cssVar("--muted") } },
+            y: { grid: { color: cssVar("--line") }, ticks: { color: cssVar("--muted"), callback: (v) => fmt(v) } },
+          },
+        },
+      })
+    );
+  }
+}
+
+function exportCard() {
+  const year = today().slice(0, 4);
+  return `<section class="card"><h2>Eksport do Excela</h2>
+    <div class="row2">
+      <div><label for="ex-from">Od</label><input id="ex-from" type="date" value="${year}-01-01"></div>
+      <div><label for="ex-to">Do</label><input id="ex-to" type="date" value="${today()}"></div>
+    </div>
+    <p class="small muted">Plik .xlsx z dwoma arkuszami: wydatki i pozycje z paragonów.</p>
+    <a class="btn" id="ex-go" href="/api/export/xlsx" download>${icon("download")} Pobierz plik</a>
+  </section>`;
+}
+function bindExport() {
+  const go = document.getElementById("ex-go");
+  const update = () => {
+    const p = new URLSearchParams();
+    const from = document.getElementById("ex-from").value, to = document.getElementById("ex-to").value;
+    if (from) p.set("date_from", from);
+    if (to) p.set("date_to", to);
+    go.href = `/api/export/xlsx?${p}`;
+  };
+  document.getElementById("ex-from").onchange = update;
+  document.getElementById("ex-to").onchange = update;
+  update();
+}
+
 const routes = [
   [/^#\/?$/, viewDashboard, "dashboard"],
   [/^#\/login$/, viewLogin],
@@ -1105,6 +1346,9 @@ const routes = [
   [/^#\/edit-category\/(\d+|new)$/, viewEditCategory, "settings"],
   [/^#\/recurring\/(\d+|new)$/, viewRecurring, "settings"],
   [/^#\/outbox$/, viewOutbox, "dashboard"],
+  [/^#\/search$/, viewSearch, "expenses"],
+  [/^#\/products$/, viewProducts, "dashboard"],
+  [/^#\/product\/(.+)$/, viewProduct, "dashboard"],
 ];
 
 function setChrome(title, { back = null, tabbar = true } = {}) {

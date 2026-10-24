@@ -183,3 +183,68 @@ def test_receipt_resend_is_idempotent(client, monkeypatch):
     ).json()["id"]
     assert send() == send()
     assert len(client.get("/api/receipts").json()) == 1
+
+
+def test_receipt_items_search_and_products(client, monkeypatch):
+    food = first_category(client)
+    for day, butter in [("2026-09-03", 699), ("2026-10-04", 749)]:
+        r = client.post(
+            "/api/expenses",
+            json={
+                "amount_grosze": butter + 1200, "spent_on": day, "category_id": food, "merchant": "Żabka",
+                "items": [{"name": "Masło Extra A", "price_grosze": butter}, {"name": "Kawa ziarnista", "price_grosze": 1500},
+                          {"name": "Rabat", "price_grosze": -300}],
+            },
+        )
+        assert r.status_code == 201
+    expense = r.json()
+    assert [i["name"] for i in expense["items"]] == ["Masło Extra A", "Kawa ziarnista", "Rabat"]
+    assert expense["items"][0]["product_key"] == "maslo extra"
+
+    assert len(client.get("/api/expenses/search", params={"q": "zabka"}).json()) == 2
+    assert len(client.get("/api/expenses/search", params={"q": "MASLO", "date_from": "2026-10-01"}).json()) == 1
+    assert client.get("/api/expenses/search", params={"q": "herbata"}).json() == []
+
+    products = client.get("/api/products").json()
+    butter = next(p for p in products if p["product_key"] == "maslo extra")
+    assert butter["count"] == 2 and butter["total_grosze"] == 1448 and butter["last_price_grosze"] == 749
+    assert all(p["name"] != "Rabat" for p in products)
+    assert len(client.get("/api/products", params={"month": "2026-10", "q": "kawa"}).json()) == 1
+    history = client.get("/api/products/history", params={"key": "maslo extra"}).json()
+    assert [h["price_grosze"] for h in history] == [699, 749]
+
+    r = client.patch(f"/api/expenses/{expense['id']}", json={"items": [{"name": "Herbata", "price_grosze": 900}]})
+    assert [i["name"] for i in r.json()["items"]] == ["Herbata"]
+    assert client.patch(f"/api/expenses/{expense['id']}", json={"description": "x"}).json()["items"][0]["name"] == "Herbata"
+
+
+def test_confirm_receipt_saves_items(client, monkeypatch):
+    monkeypatch.setattr(ollama, "read_receipt", lambda path: ({"merchant": "Lidl", "date": None, "total_grosze": 500, "items": []}, ""))
+    receipt_id = client.post("/api/receipts", files={"file": ("p.jpg", jpeg_bytes(), "image/jpeg")}).json()["id"]
+    r = client.post(
+        f"/api/receipts/{receipt_id}/confirm",
+        json={"amount_grosze": 500, "spent_on": "2026-10-20", "category_id": first_category(client),
+              "items": [{"name": "Bułka", "price_grosze": 500}]},
+    )
+    assert r.status_code == 201 and r.json()["items"][0]["name"] == "Bułka"
+
+
+def test_negative_item_price_parsed():
+    assert ollama.parse_amount("-3,00") == -300
+    assert ollama.normalize({"items": [{"name": "Rabat", "price": "-1.50"}]})["items"][0]["price_grosze"] == -150
+
+
+def test_export_xlsx(client):
+    from openpyxl import load_workbook
+
+    client.post(
+        "/api/expenses",
+        json={"amount_grosze": 1234, "spent_on": "2026-10-02", "category_id": first_category(client),
+              "description": "zakupy", "items": [{"name": "Chleb", "price_grosze": 1234}]},
+    )
+    r = client.get("/api/export/xlsx", params={"date_from": "2026-10-01"})
+    assert r.status_code == 200 and "attachment" in r.headers["content-disposition"]
+    wb = load_workbook(io.BytesIO(r.content))
+    assert wb.sheetnames == ["Wydatki", "Pozycje"]
+    assert wb["Wydatki"]["B2"].value == 12.34
+    assert wb["Pozycje"]["B2"].value == "Chleb"

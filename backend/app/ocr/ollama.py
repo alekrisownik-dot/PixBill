@@ -19,6 +19,9 @@ Odczytaj zdjęcie paragonu i zwróć WYŁĄCZNIE JSON w formacie:
   "items": [{"name": "nazwa pozycji", "price": 12.34}],
   "raw_text": "cały odczytany tekst paragonu"
 }
+W "items" wpisz każdą kupioną pozycję po kolei: nazwę tak jak na paragonie i cenę za cały wiersz
+(np. "2 x 3,49 6,98" daje cenę 6.98). Pomiń literę stawki VAT po cenie. Rabat lub upust wpisz
+jako osobną pozycję z ujemną ceną. Nie wpisuj do "items" sumy, podatku PTU ani reszty.
 Suma to zwykle wiersz "SUMA PLN". Nie zgaduj: jeśli czegoś nie widać, wpisz null."""
 
 MAX_SIDE = 1600
@@ -44,7 +47,7 @@ def parse_amount(value) -> int | None:
         return None
     if isinstance(value, (int, float)):
         return round(value * 100)
-    match = re.search(r"\d+(?:[.,]\d{1,2})?", str(value).replace(" ", ""))
+    match = re.search(r"-?\d+(?:[.,]\d{1,2})?", str(value).replace(" ", ""))
     if not match:
         return None
     return round(float(match.group().replace(",", ".")) * 100)

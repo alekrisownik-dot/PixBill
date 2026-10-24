@@ -11,9 +11,10 @@ from sqlalchemy.orm import Session
 from ..cleanup import photo_delete_after
 from ..config import get_settings
 from ..db import get_db, new_session
+from ..items import set_items
 from ..models import Category, Expense, Receipt
 from ..ocr import ollama
-from ..schemas import ExpenseOut, ReceiptOut
+from ..schemas import ExpenseOut, ItemIn, ReceiptOut
 
 router = APIRouter(prefix="/api/receipts", tags=["receipts"])
 log = logging.getLogger(__name__)
@@ -142,6 +143,7 @@ class ConfirmIn(BaseModel):
     category_id: int
     description: str = Field(default="", max_length=500)
     merchant: str | None = Field(default=None, max_length=200)
+    items: list[ItemIn] = Field(default_factory=list, max_length=200)
 
 
 @router.post("/{receipt_id}/confirm", response_model=ExpenseOut, status_code=201)
@@ -151,7 +153,8 @@ def confirm_receipt(receipt_id: int, data: ConfirmIn, db: Session = Depends(get_
         raise HTTPException(409, "Paragon jest już zatwierdzony")
     if db.get(Category, data.category_id) is None:
         raise HTTPException(422, "Nie ma takiej sekcji")
-    expense = Expense(**data.model_dump(), source="receipt", receipt_id=receipt.id)
+    expense = Expense(**data.model_dump(exclude={"items"}), source="receipt", receipt_id=receipt.id)
+    set_items(expense, data.items)
     receipt.status = "confirmed"
     receipt.confirmed_at = datetime.now(timezone.utc)
     db.add(expense)

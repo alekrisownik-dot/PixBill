@@ -60,6 +60,23 @@ class Expense(Base):
 
     category: Mapped[Category] = relationship()
     receipt: Mapped[Receipt | None] = relationship(back_populates="expense")
+    items: Mapped[list["ExpenseItem"]] = relationship(
+        back_populates="expense", cascade="all, delete-orphan", order_by="ExpenseItem.position"
+    )
+
+
+class ExpenseItem(Base):
+
+    __tablename__ = "expense_items"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    expense_id: Mapped[int] = mapped_column(ForeignKey("expenses.id", ondelete="CASCADE"), index=True)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    name: Mapped[str] = mapped_column(String(200))
+    product_key: Mapped[str] = mapped_column(String(200), index=True)
+    price_grosze: Mapped[int] = mapped_column(Integer)
+
+    expense: Mapped[Expense] = relationship(back_populates="items")
 
 
 class RecurringExpense(Base):

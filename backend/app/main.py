@@ -12,7 +12,7 @@ from .auth import check_password, require_login
 from .cleanup import cleanup_loop
 from .config import get_settings
 from .db import init_db
-from .routers import categories, expenses, receipts, recurring, stats
+from .routers import categories, expenses, export, products, receipts, recurring, stats
 from .schemas import LoginIn
 
 logging.basicConfig(level=logging.INFO)
@@ -52,7 +52,7 @@ def logout(request: Request):
     request.session.clear()
 
 
-for module in (categories, expenses, receipts, recurring, stats):
+for module in (categories, expenses, export, products, receipts, recurring, stats):
     app.include_router(module.router, dependencies=[Depends(require_login)])
 
 app.mount("/", StaticFiles(directory=Path(__file__).parent / "static", html=True), name="static")
