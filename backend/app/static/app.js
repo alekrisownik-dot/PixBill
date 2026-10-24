@@ -8,6 +8,24 @@ const $tabbar = document.getElementById("tabbar");
 const esc = (s) =>
   String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 
+const ICONS = {
+  camera: '<path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.5"/>',
+  image: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/>',
+  pencil: '<path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z"/><path d="m13.5 6.5 4 4"/>',
+  repeat: '<path d="M17 2l3 3-3 3"/><path d="M4 11V9a4 4 0 0 1 4-4h12"/><path d="M7 22l-3-3 3-3"/><path d="M20 13v2a4 4 0 0 1-4 4H4"/>',
+  upload: '<path d="M12 15V4"/><path d="m7 9 5-5 5 5"/><path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/>',
+  offline: '<path d="M2 2l20 20"/><path d="M8.5 16.5a5 5 0 0 1 7 0"/><path d="M5 12.9a10 10 0 0 1 5.2-2.8"/><path d="M19 12.9a10 10 0 0 0-2.2-1.6"/><path d="M2 8.8a15 15 0 0 1 4.2-2.7"/><path d="M22 8.8a15 15 0 0 0-11.3-3.7"/><path d="M12 20h.01"/>',
+  receipt: '<path d="M5 3v18l2.3-1.5L9.7 21l2.3-1.5 2.3 1.5 2.4-1.5L19 21V3l-2.3 1.5L14.3 3 12 4.5 9.7 3 7.3 4.5z"/><path d="M9 9h6M9 13h6"/>',
+  clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  check: '<circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/>',
+  alert: '<path d="M12 3 2 20h20z"/><path d="M12 10v4M12 17h.01"/>',
+  left: '<path d="m15 18-6-6 6-6"/>',
+  right: '<path d="m9 18 6-6-6-6"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+};
+const icon = (name) =>
+  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]}</svg>`;
+
 const money = new Intl.NumberFormat("pl-PL", { style: "currency", currency: "PLN" });
 const fmt = (grosze) => money.format((grosze || 0) / 100);
 
@@ -40,7 +58,7 @@ function change(pct, grosze) {
   if (pct === 0) return `<span class="muted">bez zmian</span>`;
   const cls = pct > 0 ? "up" : "down";
   const arrow = pct > 0 ? "▲" : "▼";
-  return `<span class="${cls}">${arrow} ${Math.abs(pct)}% (${pct > 0 ? "+" : "−"}${fmt(Math.abs(grosze))})</span>`;
+  return `<span class="delta ${cls}">${arrow} ${Math.abs(pct)}% · ${pct > 0 ? "+" : "−"}${fmt(Math.abs(grosze))}</span>`;
 }
 
 let toastTimer;
@@ -294,7 +312,7 @@ const donutCenter = {
     ctx.font = `500 13px ${Chart.defaults.font.family}`;
     ctx.fillText(label + share, x, y - 14);
     ctx.fillStyle = cssVar("--text");
-    ctx.font = `700 20px ${Chart.defaults.font.family}`;
+    ctx.font = `600 20px ${cssVar("--font-num")}`;
     ctx.fillText(fmt(value), x, y + 10);
     ctx.restore();
   },
@@ -350,7 +368,7 @@ const state = { month: thisMonth() };
 function monthSwitch(month, onChange) {
   const wrap = document.createElement("div");
   wrap.className = "month-switch";
-  wrap.innerHTML = `<button aria-label="Poprzedni miesiąc">‹</button><strong>${esc(monthName(month))}</strong><button aria-label="Następny miesiąc">›</button>`;
+  wrap.innerHTML = `<button aria-label="Poprzedni miesiąc">${icon("left")}</button><strong>${esc(monthName(month))}</strong><button aria-label="Następny miesiąc">${icon("right")}</button>`;
   const [prev, , next] = wrap.children;
   const switchTo = async (m, direction) => {
     destroyCharts();
@@ -381,10 +399,9 @@ async function viewLogin() {
   $view.innerHTML = `<form class="login">
       <img src="/icons/icon-192.png" alt="">
       <h2>PixBill</h2>
-      <p class="muted">Wydatki z paragonów</p>
+      <p class="muted">Domowe wydatki z paragonów</p>
       <label for="pw">Hasło</label>
       <input id="pw" type="password" autocomplete="current-password" required>
-      <p></p>
       <button class="btn primary">Zaloguj</button>
     </form>`;
   const form = $view.querySelector("form");
@@ -420,9 +437,9 @@ async function viewDashboard() {
   if (pending.length) {
     $view.insertAdjacentHTML(
       "beforeend",
-      `<a class="banner" href="#/receipts">${toCheck ? `🧾 Paragony do sprawdzenia: ${toCheck}` : ""}${
+      `<a class="banner" href="#/receipts">${icon(toCheck ? "receipt" : "clock")}<span>${toCheck ? `Paragony do sprawdzenia: ${toCheck}` : ""}${
         toCheck && reading ? " · " : ""
-      }${reading ? `⏳ Odczytywane: ${reading}` : ""}</a>`
+      }${reading ? `Odczytywane: ${reading}` : ""}</span><span class="chev">${icon("right")}</span></a>`
     );
   }
 
@@ -430,7 +447,7 @@ async function viewDashboard() {
   if (queued.length) {
     $view.insertAdjacentHTML(
       "beforeend",
-      `<a class="banner outbox" href="#/outbox">📤 Czeka na wysłanie: ${queued.length}<span class="small"> · dojdzie do statystyk po wysłaniu</span></a>`
+      `<a class="banner outbox" href="#/outbox">${icon("upload")}<span>Czeka na wysłanie: ${queued.length}<span class="small muted"> · trafi do statystyk po wysłaniu</span></span><span class="chev">${icon("right")}</span></a>`
     );
   }
   if (offline.active) $view.insertAdjacentHTML("beforeend", offlineNote());
@@ -438,10 +455,10 @@ async function viewDashboard() {
   const withSpend = summary.categories.filter((c) => c.total_grosze > 0);
   $view.insertAdjacentHTML(
     "beforeend",
-    `<section class="card">
-      <h2>Wydano w tym miesiącu</h2>
+    `<section class="card receipt">
+      <div class="receipt-head"><span>Suma PLN</span><span>${esc(monthName(month))}</span></div>
       <div class="big" data-count="${summary.total_grosze}" data-key="month-total">${fmt(summary.total_grosze)}</div>
-      <div class="small">${summary.previous_total_grosze ? change(summary.change_percent, summary.change_grosze) + ` <span class="muted">vs ${esc(monthName(summary.previous_month))}</span>` : `<span class="muted">brak danych z poprzedniego miesiąca</span>`}</div>
+      <div class="receipt-foot">${summary.previous_total_grosze ? change(summary.change_percent, summary.change_grosze) + ` <span class="muted small">względem: ${esc(monthName(summary.previous_month))}</span>` : `<span class="muted small">Brak danych z poprzedniego miesiąca</span>`}</div>
     </section>
     <section class="card">
       <h2>Podział na sekcje</h2>
@@ -519,13 +536,15 @@ async function viewExpenses() {
 async function viewAdd() {
   setChrome("Dodaj wydatek");
   $view.innerHTML = `
-    <label class="btn primary huge" for="photo">📷 Zrób zdjęcie paragonu</label>
-    <input id="photo" type="file" accept="image/*" capture="environment" hidden>
-    <label class="btn huge" for="gallery" style="margin-top:10px">🖼️ Wybierz zdjęcie z galerii</label>
-    <input id="gallery" type="file" accept="image/*" hidden>
-    <a class="btn huge" href="#/new" style="margin-top:10px">✏️ Wpisz ręcznie</a>
-    <a class="btn" href="#/recurring/new" style="margin-top:10px">🔁 Dodaj opłatę stałą (czynsz, abonament)</a>
-    <p class="small muted" style="text-align:center">Paragon odczyta się w tle. Możesz w tym czasie robić zdjęcia kolejnych.</p>`;
+    <div class="actions">
+      <label class="action primary" for="photo"><span class="ic">${icon("camera")}</span><span><b>Zrób zdjęcie paragonu</b><span class="sub">Kwotę, sklep i datę odczytam sam</span></span></label>
+      <input id="photo" type="file" accept="image/*" capture="environment" hidden>
+      <label class="action" for="gallery"><span class="ic">${icon("image")}</span><span><b>Zdjęcie z galerii</b><span class="sub">Paragon sfotografowany wcześniej</span></span></label>
+      <input id="gallery" type="file" accept="image/*" hidden>
+      <a class="action" href="#/new"><span class="ic">${icon("pencil")}</span><span><b>Wpisz ręcznie</b><span class="sub">Kwota, opis i sekcja</span></span></a>
+      <a class="action" href="#/recurring/new"><span class="ic">${icon("repeat")}</span><span><b>Opłata stała</b><span class="sub">Czynsz, internet, abonament: co miesiąc</span></span></a>
+    </div>
+    <p class="small muted hint">Paragon odczyta się w tle, więc możesz od razu robić zdjęcia kolejnych.</p>`;
   const upload = async (input) => {
     const file = input.files[0];
     if (!file) return;
@@ -673,7 +692,7 @@ async function viewReceipts() {
   setChrome("Paragony", { back: "#/" });
   const all = await api("/api/receipts");
   const open = all.filter((r) => r.status !== "confirmed");
-  const label = { pending: "⏳ Odczytywanie…", processed: "Do sprawdzenia", failed: "⚠️ Nie udało się odczytać" };
+  const label = { pending: "Odczytywanie…", processed: "Do sprawdzenia", failed: "Nie udało się odczytać" };
   $view.innerHTML = `<section class="card"><h2>Do sprawdzenia</h2>${
     open.length
       ? `<ul class="list">${open
@@ -684,7 +703,7 @@ async function viewReceipts() {
               <span class="amount">${r.ocr_result?.total_grosze ? fmt(r.ocr_result.total_grosze) : ""}</span></a></li>`
           )
           .join("")}</ul>`
-      : `<div class="empty">Wszystkie paragony sprawdzone 👍</div>`
+      : `<div class="empty">${icon("check")}<p>Wszystkie paragony sprawdzone</p></div>`
   }</section>`;
 }
 
@@ -997,7 +1016,7 @@ function offlineNote() {
   const when = offline.since
     ? new Date(offline.since).toLocaleString("pl-PL", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })
     : null;
-  return `<div class="banner info">📡 Brak połączenia z serwerem.${when ? ` Pokazuję dane z ${esc(when)}.` : ""}</div>`;
+  return `<div class="banner info">${icon("offline")}<span>Brak połączenia z serwerem.${when ? ` Pokazuję dane z ${esc(when)}.` : ""}</span></div>`;
 }
 
 function queuedRows(queued, month, categoryId, catMap) {
@@ -1011,7 +1030,7 @@ function queuedRows(queued, month, categoryId, catMap) {
       return `<li><a href="#/outbox">
         <span class="dot" style="background:${esc(cat?.color || "#999")}"></span>
         <span class="grow"><div class="t">${esc(q.body.description || q.body.merchant || cat?.name || "Wydatek")}</div>
-          <div class="small muted">${dayLabel(q.body.spent_on)} · 📤 czeka na wysłanie</div></span>
+          <div class="small muted">${dayLabel(q.body.spent_on)} · czeka na wysłanie</div></span>
         <span class="amount">${fmt(q.body.amount_grosze)}</span></a></li>`;
     })
     .join("")}</ul>`;
@@ -1052,7 +1071,7 @@ async function viewOutbox() {
                 <button class="icon-btn small-x" data-del="${esc(q.client_id)}" aria-label="Usuń z kolejki">×</button></li>`;
             })
             .join("")}</ul>`
-        : `<div class="empty">Wszystko wysłane 👍</div>`
+        : `<div class="empty">${icon("check")}<p>Wszystko wysłane</p></div>`
     }</section>
     ${queued.length ? `<button class="btn primary" id="sync">Wyślij teraz</button>` : ""}`;
   document.getElementById("sync")?.addEventListener("click", async (ev) => {
@@ -1102,7 +1121,7 @@ function handleError(err) {
   }
   if (err instanceof OfflineError) {
     $view.innerHTML = `<section class="card empty">
-        <div style="font-size:32px">📡</div>
+        ${icon("offline")}
         <p><strong>Brak połączenia z serwerem</strong></p>
         <p class="small">Tych danych nie ma jeszcze zapisanych w telefonie. Nowe wydatki i zdjęcia paragonów możesz dodawać dalej: wyślą się same po połączeniu.</p>
         <a class="btn primary" href="#/add">Dodaj wydatek</a>
