@@ -1,0 +1,29 @@
+services:
+  app:
+    build: ./backend
+    container_name: pixbill-app
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PIXBILL_DATA_DIR: /data
+      PIXBILL_OLLAMA_URL: http://ollama:11434
+    volumes:
+      - ./data:/data
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      - ollama
+
+  ollama:
+    image: ollama/ollama:0.12.6
+    container_name: pixbill-ollama
+    restart: unless-stopped
+    volumes:
+      - ./ollama:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
