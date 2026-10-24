@@ -1,7 +1,23 @@
 # PixBill
 
 Domowa aplikacja do zliczania miesięcznych wydatków ze zdjęć paragonów i ręcznych wpisów.
-Działa na własnym serwerze, a dostęp jest wyłącznie przez Tailscale.
+Działa na własnym serwerze, paragony odczytuje lokalny model w Ollamie, a dostęp jest wyłącznie przez Tailscale.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/hero-dark.png">
+  <img alt="Ekrany PixBill: pulpit z wykresem sekcji, sprawdzanie paragonu, wyszukiwarka i historia ceny produktu" src="docs/screenshots/hero-light.png">
+</picture>
+
+## Co potrafi
+
+- **Paragon ze zdjęcia.** Robisz zdjęcie, a model odczytuje sklep, datę, sumę i pozycje. Przed zapisaniem sprawdzasz i poprawiasz dane.
+- **Pozycje i ceny produktów.** Widać, ile wydajesz na konkretne produkty i jak zmieniała się ich cena między zakupami.
+- **Wykresy i porównania.** Podział miesiąca na sekcje, zmiana względem poprzedniego miesiąca i trend z ostatnich 12 miesięcy.
+- **Własne sekcje i opłaty stałe.** Czynsz albo internet dodajesz raz, a aplikacja co miesiąc sama dopisuje je do wydatków.
+- **Wyszukiwarka.** Szuka w sklepach, opisach i produktach ze wszystkich miesięcy, także bez polskich znaków.
+- **Eksport do Excela.** Plik .xlsx z dwoma arkuszami: wydatki i pozycje z paragonów.
+- **Działa bez połączenia.** Wydatki i zdjęcia zapisane offline wysyłają się same, gdy telefon znów połączy się z serwerem.
+- **Prywatność.** Wszystko zostaje na Twoim serwerze. Zdjęcie paragonu jest kasowane 10 dni po zatwierdzeniu, a dane zostają w bazie.
 
 ## Aplikacja na telefon
 
@@ -11,12 +27,7 @@ Interfejs to PWA serwowane przez backend pod adresem z `tailscale serve`
 - Android (Chrome): menu ⋮ → „Zainstaluj aplikację”,
 - iPhone (Safari): Udostępnij → „Do ekranu początkowego”.
 
-Ekrany: pulpit (suma miesiąca, wykres kołowy sekcji, porównanie z poprzednim miesiącem, 6 miesięcy wstecz),
-dodawanie (aparat, galeria, ręczny wpis), sprawdzanie odczytanego paragonu, lista wydatków z filtrem sekcji,
-sekcje z porównaniem miesięcy i trendem z 12 miesięcy, ustawienia sekcji.
-Przy paragonie ze znanego sklepu aplikacja podpowiada sekcję z ostatniego zakupu.
-Bez połączenia z serwerem aplikacja pokazuje ostatnio pobrane dane, a nowe wydatki i zdjęcia paragonów trzyma w telefonie i wysyła je sama, gdy połączenie wróci (każdy zapis ma identyfikator, więc ponowne wysłanie nie robi duplikatu).
-Opłaty stałe (czynsz, internet, abonamenty) dodajesz raz w Ustawieniach, a aplikacja co miesiąc sama dopisuje je do wydatków w wybranym dniu.
+Ma tryb jasny i ciemny, który dobiera się do ustawień telefonu.
 
 ## Backend
 
@@ -28,6 +39,10 @@ Opłaty stałe (czynsz, internet, abonamenty) dodajesz raz w Ustawieniach, a apl
   - wydatki: ręczne dodawanie z opisem i sekcją, filtrowanie po miesiącu i sekcji (`/api/expenses`)
   - paragony: wgranie zdjęcia, odczyt w tle przez Ollamę, ekran weryfikacji i zatwierdzenie (`/api/receipts`)
   - statystyki: suma miesiąca, podział na sekcje, porównanie z poprzednim miesiącem, trend (`/api/stats`)
+  - wyszukiwanie wydatków (`/api/expenses/search`)
+  - produkty z paragonów i historia cen (`/api/products`)
+  - opłaty stałe (`/api/recurring`)
+  - eksport do Excela (`/api/export/xlsx`)
 - Zdjęcie paragonu jest kasowane 10 dni po zatwierdzeniu. Dane zostają w bazie.
 - Dokumentacja API po uruchomieniu: `http://127.0.0.1:8000/docs`.
 
