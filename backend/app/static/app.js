@@ -90,6 +90,33 @@ function countUp() {
 }
 
 class AuthError extends Error {}
+class OfflineError extends Error {
+  constructor() {
+    super("Brak połączenia z serwerem");
+  }
+}
+
+const offline = { active: false, since: null };
+function setOffline(isOffline, cachedAt = null) {
+  offline.active = isOffline;
+  offline.since = cachedAt;
+  const pill = document.getElementById("net");
+  if (pill) pill.hidden = !isOffline;
+}
+
+function cacheGet(path) {
+  try {
+    return JSON.parse(localStorage.getItem("api:" + path));
+  } catch {
+    return null;
+  }
+}
+function cachePut(path, data) {
+  try {
+    const text = JSON.stringify({ at: Date.now(), data });
+    if (text.length < 300000) localStorage.setItem("api:" + path, text);
+  } catch {}
+}
 
 async function api(path, { method = "GET", body, form } = {}) {
   const opts = { method, credentials: "same-origin", headers: {} };
@@ -98,7 +125,29 @@ async function api(path, { method = "GET", body, form } = {}) {
     opts.headers["Content-Type"] = "application/json";
     opts.body = JSON.stringify(body);
   }
-  const res = await fetch(path, opts);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), form ? 60000 : 8000);
+  opts.signal = controller.signal;
+  let res;
+  try {
+    res = await fetch(path, opts);
+    if ([502, 503, 504].includes(res.status)) throw new OfflineError();
+  } catch (err) {
+    if (err instanceof AuthError) throw err;
+    const cached = method === "GET" ? cacheGet(path) : null;
+    if (cached) {
+      setOffline(true, cached.at);
+      return cached.data;
+    }
+    setOffline(true);
+    throw new OfflineError();
+  } finally {
+    clearTimeout(timer);
+  }
+  if (offline.active) {
+    setOffline(false);
+    syncOutbox();
+  }
   if (res.status === 401 && path !== "/api/login") throw new AuthError();
   if (!res.ok) {
     let detail = `Błąd ${res.status}`;
@@ -109,8 +158,95 @@ async function api(path, { method = "GET", body, form } = {}) {
     } catch {}
     throw new Error(detail);
   }
-  return res.status === 204 ? null : res.json();
+  if (res.status === 204) return null;
+  const data = await res.json();
+  if (method === "GET") cachePut(path, data);
+  return data;
 }
+
+const newClientId = () =>
+  crypto.randomUUID ? crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+
+let dbPromise = null;
+function outboxDb() {
+  dbPromise ??= new Promise((resolve, reject) => {
+    const req = indexedDB.open("pixbill", 1);
+    req.onupgradeneeded = () => req.result.createObjectStore("outbox", { keyPath: "client_id" });
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+  return dbPromise;
+}
+async function outboxTx(mode, fn) {
+  const db = await outboxDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("outbox", mode);
+    const result = fn(tx.objectStore("outbox"));
+    tx.oncomplete = () => resolve(result?.result ?? result);
+    tx.onerror = () => reject(tx.error);
+  });
+}
+const outboxAdd = (item) => outboxTx("readwrite", (s) => s.put({ created_at: Date.now(), ...item }));
+const outboxDelete = (id) => outboxTx("readwrite", (s) => s.delete(id));
+async function outboxAll() {
+  try {
+    const items = await outboxTx("readonly", (s) => s.getAll());
+    return items.sort((a, b) => a.created_at - b.created_at);
+  } catch {
+    return [];
+  }
+}
+
+async function sendOutboxItem(item) {
+  if (item.kind === "expense") {
+    await api("/api/expenses", { method: "POST", body: { ...item.body, client_id: item.client_id } });
+  } else if (item.kind === "receipt") {
+    const form = new FormData();
+    form.append("file", item.blob, item.name || "paragon.jpg");
+    form.append("client_id", item.client_id);
+    await api("/api/receipts", { method: "POST", form });
+  }
+}
+
+let syncing = false;
+async function syncOutbox({ manual = false } = {}) {
+  if (syncing) return;
+  syncing = true;
+  let sent = 0;
+  try {
+    for (const item of await outboxAll()) {
+      try {
+        await sendOutboxItem(item);
+        await outboxDelete(item.client_id);
+        sent++;
+      } catch (err) {
+        if (err instanceof OfflineError || err instanceof AuthError) break;
+        await outboxAdd({ ...item, error: err.message });
+      }
+    }
+  } finally {
+    syncing = false;
+  }
+  if (sent) {
+    toast(`Wysłano zapisane offline: ${sent}`);
+    if (["#/", "", "#/expenses", "#/outbox"].includes(location.hash)) route();
+  } else if (manual && offline.active) {
+    toast("Nadal brak połączenia z serwerem");
+  }
+  updateOutboxBadge();
+}
+
+async function updateOutboxBadge() {
+  const count = (await outboxAll()).length;
+  const add = document.querySelector('.tabbar a.add');
+  if (add) add.dataset.pending = count || "";
+}
+
+window.addEventListener("online", () => syncOutbox());
+document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && syncOutbox());
+setInterval(async () => {
+  if ((await outboxAll()).length) syncOutbox();
+}, 30000);
 
 let categoriesCache = null;
 async function categories(force = false) {
@@ -290,6 +426,15 @@ async function viewDashboard() {
     );
   }
 
+  const queued = await outboxAll();
+  if (queued.length) {
+    $view.insertAdjacentHTML(
+      "beforeend",
+      `<a class="banner outbox" href="#/outbox">📤 Czeka na wysłanie: ${queued.length}<span class="small"> · dojdzie do statystyk po wysłaniu</span></a>`
+    );
+  }
+  if (offline.active) $view.insertAdjacentHTML("beforeend", offlineNote());
+
   const withSpend = summary.categories.filter((c) => c.total_grosze > 0);
   $view.insertAdjacentHTML(
     "beforeend",
@@ -359,6 +504,7 @@ async function viewExpenses() {
     </div>
     <section class="card">
       <h2>${expenses.length} wydatków · ${fmt(total)}</h2>
+      ${queuedRows(await outboxAll(), month, catFilter, catMap)}
       ${expenses.length ? `<ul class="list">${expenses.map((e) => expenseRow(e, catMap[e.category_id])).join("")}</ul>` : `<div class="empty">Nic tu nie ma</div>`}
     </section>`
   );
@@ -383,13 +529,22 @@ async function viewAdd() {
   const upload = async (input) => {
     const file = input.files[0];
     if (!file) return;
+    const client_id = newClientId();
     const form = new FormData();
     form.append("file", file);
+    form.append("client_id", client_id);
     $view.innerHTML = `<div class="card empty"><div class="spinner"></div>Wysyłam zdjęcie…</div>`;
     try {
       const r = await api("/api/receipts", { method: "POST", form });
       location.hash = `#/receipt/${r.id}`;
     } catch (err) {
+      if (err instanceof OfflineError) {
+        await outboxAdd({ client_id, kind: "receipt", blob: file, name: file.name, type: file.type });
+        updateOutboxBadge();
+        toast("Brak połączenia. Zdjęcie czeka w telefonie, wyślę je po połączeniu.");
+        location.hash = "#/";
+        return;
+      }
       toast(err.message);
       viewAdd();
     }
@@ -461,8 +616,16 @@ async function viewNewExpense() {
   const f = await expenseForm({
     submitLabel: "Zapisz wydatek",
     onSubmit: async (data) => {
-      await api("/api/expenses", { method: "POST", body: data });
-      toast("Zapisano");
+      const client_id = newClientId();
+      try {
+        await api("/api/expenses", { method: "POST", body: { ...data, client_id } });
+        toast("Zapisano");
+      } catch (err) {
+        if (!(err instanceof OfflineError)) throw err;
+        await outboxAdd({ client_id, kind: "expense", body: data });
+        updateOutboxBadge();
+        toast("Brak połączenia. Zapisano w telefonie, wyślę po połączeniu.");
+      }
       location.hash = "#/";
     },
   });
@@ -830,6 +993,84 @@ async function viewRecurring(id) {
   }
 }
 
+function offlineNote() {
+  const when = offline.since
+    ? new Date(offline.since).toLocaleString("pl-PL", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })
+    : null;
+  return `<div class="banner info">📡 Brak połączenia z serwerem.${when ? ` Pokazuję dane z ${esc(when)}.` : ""}</div>`;
+}
+
+function queuedRows(queued, month, categoryId, catMap) {
+  const rows = queued.filter(
+    (q) => q.kind === "expense" && q.body.spent_on.startsWith(month) && (!categoryId || q.body.category_id === categoryId)
+  );
+  if (!rows.length) return "";
+  return `<ul class="list queued">${rows
+    .map((q) => {
+      const cat = catMap[q.body.category_id];
+      return `<li><a href="#/outbox">
+        <span class="dot" style="background:${esc(cat?.color || "#999")}"></span>
+        <span class="grow"><div class="t">${esc(q.body.description || q.body.merchant || cat?.name || "Wydatek")}</div>
+          <div class="small muted">${dayLabel(q.body.spent_on)} · 📤 czeka na wysłanie</div></span>
+        <span class="amount">${fmt(q.body.amount_grosze)}</span></a></li>`;
+    })
+    .join("")}</ul>`;
+}
+
+let outboxUrls = [];
+async function viewOutbox() {
+  setChrome("Do wysłania", { back: "#/" });
+  outboxUrls.forEach((u) => URL.revokeObjectURL(u));
+  outboxUrls = [];
+  const [queued, cats] = await Promise.all([outboxAll(), categories().catch(() => [])]);
+  const catMap = Object.fromEntries(cats.map((c) => [c.id, c]));
+  $view.innerHTML = `<p class="small muted">Te zapisy są tylko w telefonie. Wyślą się same, gdy telefon połączy się z serwerem (Tailscale albo sieć domowa).</p>
+    <section class="card">${
+      queued.length
+        ? `<ul class="list">${queued
+            .map((q) => {
+              let thumb = "", title, sub, amount = "";
+              if (q.kind === "receipt") {
+                const url = URL.createObjectURL(q.blob);
+                outboxUrls.push(url);
+                thumb = `<img class="thumb" src="${url}" alt="">`;
+                title = "Zdjęcie paragonu";
+                sub = "odczytam je po wysłaniu";
+              } else {
+                const cat = catMap[q.body.category_id];
+                thumb = `<span class="dot" style="background:${esc(cat?.color || "#999")}"></span>`;
+                title = q.body.description || q.body.merchant || cat?.name || "Wydatek";
+                sub = `${dayLabel(q.body.spent_on)}${cat ? " · " + cat.name : ""}`;
+                amount = fmt(q.body.amount_grosze);
+              }
+              const added = new Date(q.created_at).toLocaleString("pl-PL", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+              return `<li>${thumb}
+                <span class="grow"><div class="t">${esc(title)}</div>
+                  <div class="small muted">${esc(sub)} · zapisano ${esc(added)}</div>
+                  ${q.error ? `<div class="small up">Serwer odrzucił: ${esc(q.error)}</div>` : ""}</span>
+                <span class="amount">${amount}</span>
+                <button class="icon-btn small-x" data-del="${esc(q.client_id)}" aria-label="Usuń z kolejki">×</button></li>`;
+            })
+            .join("")}</ul>`
+        : `<div class="empty">Wszystko wysłane 👍</div>`
+    }</section>
+    ${queued.length ? `<button class="btn primary" id="sync">Wyślij teraz</button>` : ""}`;
+  document.getElementById("sync")?.addEventListener("click", async (ev) => {
+    ev.target.disabled = true;
+    ev.target.textContent = "Wysyłam…";
+    await syncOutbox({ manual: true });
+    viewOutbox().then(() => animateIn());
+  });
+  $view.querySelectorAll("[data-del]").forEach((b) => {
+    b.onclick = async () => {
+      if (!confirm("Usunąć ten zapis? Nie zostanie wysłany.")) return;
+      await outboxDelete(b.dataset.del);
+      updateOutboxBadge();
+      viewOutbox();
+    };
+  });
+}
+
 const routes = [
   [/^#\/?$/, viewDashboard, "dashboard"],
   [/^#\/login$/, viewLogin],
@@ -844,6 +1085,7 @@ const routes = [
   [/^#\/settings$/, viewSettings, "settings"],
   [/^#\/edit-category\/(\d+|new)$/, viewEditCategory, "settings"],
   [/^#\/recurring\/(\d+|new)$/, viewRecurring, "settings"],
+  [/^#\/outbox$/, viewOutbox, "dashboard"],
 ];
 
 function setChrome(title, { back = null, tabbar = true } = {}) {
@@ -856,6 +1098,16 @@ function setChrome(title, { back = null, tabbar = true } = {}) {
 function handleError(err) {
   if (err instanceof AuthError) {
     location.hash = "#/login";
+    return;
+  }
+  if (err instanceof OfflineError) {
+    $view.innerHTML = `<section class="card empty">
+        <div style="font-size:32px">📡</div>
+        <p><strong>Brak połączenia z serwerem</strong></p>
+        <p class="small">Tych danych nie ma jeszcze zapisanych w telefonie. Nowe wydatki i zdjęcia paragonów możesz dodawać dalej: wyślą się same po połączeniu.</p>
+        <a class="btn primary" href="#/add">Dodaj wydatek</a>
+        <button class="btn" onclick="route()">Spróbuj ponownie</button>
+      </section>`;
     return;
   }
   console.error(err);
@@ -898,5 +1150,6 @@ async function route() {
 
 window.addEventListener("hashchange", route);
 route();
+syncOutbox();
 
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js");

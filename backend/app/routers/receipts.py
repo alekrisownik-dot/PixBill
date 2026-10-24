@@ -2,7 +2,7 @@ import logging
 import uuid
 from datetime import date, datetime, timezone
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
@@ -78,7 +78,16 @@ def get_receipt_or_404(db: Session, receipt_id: int) -> Receipt:
 
 
 @router.post("", response_model=ReceiptOut, status_code=201)
-async def upload_receipt(file: UploadFile, background: BackgroundTasks, db: Session = Depends(get_db)):
+async def upload_receipt(
+    file: UploadFile,
+    background: BackgroundTasks,
+    client_id: str | None = Form(default=None, max_length=64),
+    db: Session = Depends(get_db),
+):
+    if client_id:
+        existing = db.scalar(select(Receipt).where(Receipt.client_id == client_id))
+        if existing is not None:
+            return to_out(existing)
     suffix = ALLOWED_TYPES.get(file.content_type or "")
     if suffix is None:
         raise HTTPException(415, "Obsługiwane formaty: JPG, PNG, WEBP, HEIC")
@@ -88,7 +97,7 @@ async def upload_receipt(file: UploadFile, background: BackgroundTasks, db: Sess
 
     name = f"{uuid.uuid4().hex}{suffix}"
     (get_settings().photos_dir / name).write_bytes(content)
-    receipt = Receipt(photo_path=name)
+    receipt = Receipt(photo_path=name, client_id=client_id)
     db.add(receipt)
     db.commit()
     background.add_task(run_ocr, receipt.id)

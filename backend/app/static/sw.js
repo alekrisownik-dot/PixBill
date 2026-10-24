@@ -1,4 +1,4 @@
-const CACHE = "pixbill-v3";
+const CACHE = "pixbill-v4";
 const SHELL = ["/", "/app.js", "/styles.css", "/vendor/chart.umd.js", "/manifest.webmanifest", "/icons/icon-192.png"];
 
 self.addEventListener("install", (e) => {
@@ -16,13 +16,18 @@ self.addEventListener("activate", (e) => {
 self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== "GET" || url.pathname.startsWith("/api/")) return;
+  const network = Promise.race([
+    fetch(e.request),
+    new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 4000)),
+  ]);
   e.respondWith(
-    fetch(e.request)
+    network
       .then((res) => {
+        if (!res.ok) throw new Error(res.status);
         const copy = res.clone();
         caches.open(CACHE).then((c) => c.put(e.request, copy));
         return res;
       })
-      .catch(() => caches.match(e.request).then((r) => r || caches.match("/")))
+      .catch(() => caches.match(e.request, { ignoreSearch: true }).then((r) => r || caches.match("/")))
   );
 });

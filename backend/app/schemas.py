@@ -35,6 +35,7 @@ class ExpenseIn(BaseModel):
     description: str = Field(default="", max_length=500)
     merchant: str | None = Field(default=None, max_length=200)
     category_id: int
+    client_id: str | None = Field(default=None, max_length=64)
 
 
 class ExpenseUpdate(BaseModel):

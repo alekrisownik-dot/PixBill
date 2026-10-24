@@ -76,11 +76,22 @@ def init_db() -> None:
             db.commit()
 
 
+NEW_COLUMNS = [
+    ("expenses", "recurring_id", "INTEGER REFERENCES recurring_expenses(id)", False),
+    ("expenses", "client_id", "VARCHAR(64)", True),
+    ("receipts", "client_id", "VARCHAR(64)", True),
+]
+
+
 def _add_missing_columns(engine) -> None:
-    columns = {c["name"] for c in inspect(engine).get_columns("expenses")}
-    if "recurring_id" not in columns:
-        with engine.begin() as conn:
-            conn.execute(text("ALTER TABLE expenses ADD COLUMN recurring_id INTEGER REFERENCES recurring_expenses(id)"))
+    inspector = inspect(engine)
+    with engine.begin() as conn:
+        for table, column, definition, unique in NEW_COLUMNS:
+            if column in {c["name"] for c in inspector.get_columns(table)}:
+                continue
+            conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {definition}"))
+            if unique:
+                conn.execute(text(f"CREATE UNIQUE INDEX IF NOT EXISTS ix_{table}_{column} ON {table} ({column})"))
 
 
 def reset_engine() -> None:

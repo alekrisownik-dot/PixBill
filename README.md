@@ -15,6 +15,7 @@ Ekrany: pulpit (suma miesiąca, wykres kołowy sekcji, porównanie z poprzednim 
 dodawanie (aparat, galeria, ręczny wpis), sprawdzanie odczytanego paragonu, lista wydatków z filtrem sekcji,
 sekcje z porównaniem miesięcy i trendem z 12 miesięcy, ustawienia sekcji.
 Przy paragonie ze znanego sklepu aplikacja podpowiada sekcję z ostatniego zakupu.
+Bez połączenia z serwerem aplikacja pokazuje ostatnio pobrane dane, a nowe wydatki i zdjęcia paragonów trzyma w telefonie i wysyła je sama, gdy połączenie wróci (każdy zapis ma identyfikator, więc ponowne wysłanie nie robi duplikatu).
 Opłaty stałe (czynsz, internet, abonamenty) dodajesz raz w Ustawieniach, a aplikacja co miesiąc sama dopisuje je do wydatków w wybranym dniu.
 
 ## Backend

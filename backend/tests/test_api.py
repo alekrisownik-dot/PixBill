@@ -165,3 +165,21 @@ def test_recurring_api(client):
     assert client.post("/api/recurring", json={"description": "X", "amount_grosze": 1, "category_id": cat, "day_of_month": 31}).status_code == 422
     assert client.delete(f"/api/recurring/{rid}").status_code == 204
     assert len(client.get("/api/expenses", params={"month": today.strftime("%Y-%m")}).json()) == 1
+
+
+def test_offline_resend_is_idempotent(client):
+    cat = first_category(client)
+    body = {"amount_grosze": 1234, "spent_on": "2026-10-10", "category_id": cat, "client_id": "tel-abc-1"}
+    first = client.post("/api/expenses", json=body).json()
+    second = client.post("/api/expenses", json=body).json()
+    assert first["id"] == second["id"]
+    assert len(client.get("/api/expenses", params={"month": "2026-10"}).json()) == 1
+
+
+def test_receipt_resend_is_idempotent(client, monkeypatch):
+    monkeypatch.setattr(ollama, "read_receipt", lambda path: ({"merchant": None, "date": None, "total_grosze": None, "items": []}, ""))
+    send = lambda: client.post(
+        "/api/receipts", files={"file": ("p.jpg", jpeg_bytes(), "image/jpeg")}, data={"client_id": "tel-rec-1"}
+    ).json()["id"]
+    assert send() == send()
+    assert len(client.get("/api/receipts").json()) == 1

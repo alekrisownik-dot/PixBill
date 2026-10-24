@@ -32,6 +32,10 @@ def list_expenses(
 
 @router.post("", response_model=ExpenseOut, status_code=201)
 def create_expense(data: ExpenseIn, db: Session = Depends(get_db)):
+    if data.client_id:
+        existing = db.scalar(select(Expense).where(Expense.client_id == data.client_id))
+        if existing is not None:
+            return existing
     ensure_category(db, data.category_id)
     expense = Expense(**data.model_dump(), source="manual")
     db.add(expense)

@@ -34,6 +34,7 @@ class Receipt(Base):
     uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     photo_deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    client_id: Mapped[str | None] = mapped_column(String(64), unique=True)
 
     expense: Mapped["Expense | None"] = relationship(back_populates="receipt")
 
@@ -51,6 +52,7 @@ class Expense(Base):
     category_id: Mapped[int] = mapped_column(ForeignKey("categories.id"))
     receipt_id: Mapped[int | None] = mapped_column(ForeignKey("receipts.id"), unique=True)
     recurring_id: Mapped[int | None] = mapped_column(ForeignKey("recurring_expenses.id", ondelete="SET NULL"))
+    client_id: Mapped[str | None] = mapped_column(String(64), unique=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
