@@ -6,6 +6,7 @@ from pathlib import Path
 
 import httpx
 from PIL import Image, ImageOps
+from pillow_heif import register_heif_opener
 
 from ..config import get_settings
 
@@ -21,6 +22,8 @@ Odczytaj zdjęcie paragonu i zwróć WYŁĄCZNIE JSON w formacie:
 Suma to zwykle wiersz "SUMA PLN". Nie zgaduj: jeśli czegoś nie widać, wpisz null."""
 
 MAX_SIDE = 1600
+
+register_heif_opener()
 
 
 class OcrError(Exception):

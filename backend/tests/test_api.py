@@ -110,3 +110,20 @@ def test_ocr_failure_marks_receipt(client, monkeypatch):
 def test_normalize_ocr_output():
     out = ollama.normalize({"merchant": "Orlen", "date": "2026-10-1", "total": "123,45 PLN", "items": [{"name": "PB95", "price": 120}]})
     assert out == {"merchant": "Orlen", "date": None, "total_grosze": 12345, "items": [{"name": "PB95", "price_grosze": 12000}]}
+
+
+def test_suggests_category_from_previous_merchant(client, monkeypatch):
+    fuel = client.get("/api/categories").json()[2]["id"]
+    client.post("/api/expenses", json={"amount_grosze": 20000, "spent_on": "2026-10-01", "category_id": fuel, "merchant": "Orlen"})
+    monkeypatch.setattr(
+        ollama, "read_receipt", lambda path: ({"merchant": "ORLEN", "date": None, "total_grosze": 100, "items": []}, "")
+    )
+    r = client.post("/api/receipts", files={"file": ("p.jpg", jpeg_bytes(), "image/jpeg")})
+    assert client.get(f"/api/receipts/{r.json()['id']}").json()["ocr_result"]["suggested_category_id"] == fuel
+
+
+def test_serves_mobile_app(client):
+    r = client.get("/")
+    assert r.status_code == 200 and "PixBill" in r.text
+    assert client.get("/manifest.webmanifest").status_code == 200
+    assert client.get("/api/health").json() == {"status": "ok"}

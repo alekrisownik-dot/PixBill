@@ -2,7 +2,10 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 
+from pathlib import Path
+
 from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
 from .auth import check_password, require_login
@@ -51,3 +54,5 @@ def logout(request: Request):
 
 for module in (categories, expenses, receipts, stats):
     app.include_router(module.router, dependencies=[Depends(require_login)])
+
+app.mount("/", StaticFiles(directory=Path(__file__).parent / "static", html=True), name="static")

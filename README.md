@@ -3,7 +3,20 @@
 Domowa aplikacja do zliczania miesięcznych wydatków ze zdjęć paragonów i ręcznych wpisów.
 Działa na własnym serwerze, a dostęp jest wyłącznie przez Tailscale.
 
-## Co jest gotowe (etap 1: infrastruktura i backend)
+## Aplikacja na telefon
+
+Interfejs to PWA serwowane przez backend pod adresem z `tailscale serve`
+(np. `https://<laptop>.<tailnet>.ts.net`). Otwierasz go na telefonie z włączonym Tailscale i instalujesz:
+
+- Android (Chrome): menu ⋮ → „Zainstaluj aplikację”,
+- iPhone (Safari): Udostępnij → „Do ekranu początkowego”.
+
+Ekrany: pulpit (suma miesiąca, wykres kołowy sekcji, porównanie z poprzednim miesiącem, 6 miesięcy wstecz),
+dodawanie (aparat, galeria, ręczny wpis), sprawdzanie odczytanego paragonu, lista wydatków z filtrem sekcji,
+sekcje z porównaniem miesięcy i trendem z 12 miesięcy, ustawienia sekcji.
+Przy paragonie ze znanego sklepu aplikacja podpowiada sekcję z ostatniego zakupu.
+
+## Backend
 
 - `docker-compose.yml`: aplikacja (FastAPI) i Ollama z dostępem do GPU.
 - Baza SQLite w `data/pixbill.db`, zdjęcia w `data/photos/`.
@@ -15,8 +28,6 @@ Działa na własnym serwerze, a dostęp jest wyłącznie przez Tailscale.
   - statystyki: suma miesiąca, podział na sekcje, porównanie z poprzednim miesiącem, trend (`/api/stats`)
 - Zdjęcie paragonu jest kasowane 10 dni po zatwierdzeniu. Dane zostają w bazie.
 - Dokumentacja API po uruchomieniu: `http://127.0.0.1:8000/docs`.
-
-Następny etap: interfejs (PWA na telefon) z wykresami.
 
 ## Instalacja
 

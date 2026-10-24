@@ -5,7 +5,7 @@ from datetime import date, datetime, timezone
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..cleanup import photo_delete_after
@@ -38,6 +38,17 @@ def to_out(receipt: Receipt) -> ReceiptOut:
     )
 
 
+def suggest_category(db: Session, merchant: str | None) -> int | None:
+    if not merchant:
+        return None
+    return db.scalar(
+        select(Expense.category_id)
+        .where(func.lower(Expense.merchant) == merchant.strip().lower())
+        .order_by(Expense.spent_on.desc(), Expense.id.desc())
+        .limit(1)
+    )
+
+
 def run_ocr(receipt_id: int) -> None:
     with new_session() as db:
         receipt = db.get(Receipt, receipt_id)
@@ -51,6 +62,7 @@ def run_ocr(receipt_id: int) -> None:
             receipt.status = "failed"
             receipt.ocr_error = str(exc)
         else:
+            result["suggested_category_id"] = suggest_category(db, result.get("merchant"))
             receipt.status = "processed"
             receipt.ocr_result = result
             receipt.ocr_raw = raw
