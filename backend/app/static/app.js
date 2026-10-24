@@ -26,6 +26,8 @@ const ICONS = {
   x: '<path d="M18 6 6 18M6 6l12 12"/>',
   download: '<path d="M12 4v11"/><path d="m7 10 5 5 5-5"/><path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/>',
   tag: '<path d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9z"/><circle cx="8" cy="8" r="1.5"/>',
+  bottle: '<path d="M10 2h4v3l1.5 2.5a3 3 0 0 1 .5 1.6V20a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2V9.1a3 3 0 0 1 .5-1.6L10 5z"/><path d="M8 12h8M8 17h8"/>',
+  chart: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
 };
 const icon = (name) =>
   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]}</svg>`;
@@ -429,14 +431,16 @@ async function viewLogin() {
 async function viewDashboard() {
   setChrome("Pulpit");
   const month = state.month;
-  const [summary, trend, expenses, pending, cats, products] = await Promise.all([
+  const [summary, trend, expenses, pending, cats, products, deposits] = await Promise.all([
     api(`/api/stats/month?month=${month}`),
     api(`/api/stats/trend?months=6&until=${month}`),
     api(`/api/expenses?month=${month}`),
     api(`/api/receipts?status=processed`).then(async (p) => p.concat(await api(`/api/receipts?status=failed`), await api(`/api/receipts?status=pending`))),
     categories(),
     api(`/api/products?month=${month}&limit=5`).catch(() => []),
+    api("/api/receipts?keep_photo=true").catch(() => []),
   ]);
+  const depositTotal = deposits.reduce((s, r) => s + r.deposit_grosze, 0);
   const catMap = Object.fromEntries(cats.map((c) => [c.id, c]));
 
   $view.innerHTML = "";
@@ -461,6 +465,16 @@ async function viewDashboard() {
     );
   }
   if (offline.active) $view.insertAdjacentHTML("beforeend", offlineNote());
+  if (month === thisMonth()) {
+    const card = await reportCard();
+    if (card) {
+      $view.insertAdjacentHTML("beforeend", card);
+      $view.querySelector(".report-close").onclick = (ev) => {
+        storeSet("report-seen", shiftMonth(thisMonth(), -1));
+        ev.currentTarget.closest(".card").remove();
+      };
+    }
+  }
 
   const withSpend = summary.categories.filter((c) => c.total_grosze > 0);
   $view.insertAdjacentHTML(
@@ -488,6 +502,7 @@ async function viewDashboard() {
       <h2>Ostatnie 6 miesięcy</h2>
       <div class="chart-box bar"><canvas id="trend"></canvas></div>
     </section>
+    ${deposits.length ? `<a class="banner deposit-banner" href="#/deposits">${icon("bottle")}<span>Paragony z kaucją: ${deposits.length}${depositTotal ? ` · ${fmt(depositTotal)}` : ""}</span><span class="chev">${icon("right")}</span></a>` : ""}
     ${products.length ? `<section class="card">
       <h2>Najwięcej wydane na produkty</h2>
       <ul class="list">${products.map(productRow).join("")}</ul>
@@ -587,7 +602,9 @@ async function viewAdd() {
   document.getElementById("gallery").onchange = (e) => upload(e.target);
 }
 
-async function expenseForm({ initial = {}, submitLabel, onSubmit, extraButtons = "" }) {
+const hasDeposit = (items) => (items || []).some((i) => foldText(i.name || "").includes("kaucj"));
+
+async function expenseForm({ initial = {}, submitLabel, onSubmit, extraButtons = "", keepPhoto = null }) {
   const cats = await activeCategories();
   const selected = initial.category_id ?? null;
   const items = (initial.items || []).filter((i) => i.name);
@@ -609,6 +626,7 @@ async function expenseForm({ initial = {}, submitLabel, onSubmit, extraButtons =
         <ul class="item-rows" id="item-rows"></ul>
         <button type="button" class="btn small-btn" id="add-item">${icon("plus")} Dodaj pozycję</button>
       </details>
+      ${keepPhoto === null ? "" : `<label class="switch-row" for="keep"><span>${icon("bottle")}</span><span class="grow"><b>Paragon z kaucją</b><span class="small muted">Zdjęcie zostanie, dopóki sam go nie usuniesz</span></span><input type="checkbox" id="keep"${keepPhoto ? " checked" : ""}></label>`}
       <p></p>
       <button class="btn primary">${esc(submitLabel)}</button>
       ${extraButtons}
@@ -672,6 +690,7 @@ async function expenseForm({ initial = {}, submitLabel, onSubmit, extraButtons =
             spent_on: form.spent_on.value,
             merchant: form.merchant.value.trim() || null,
             items: itemList.map((i) => ({ name: i.name, price_grosze: toGroszeSigned(i.price) })),
+            ...(form.keep ? { keep_photo: form.keep.checked } : {}),
           });
         } catch (err) {
           if (err instanceof AuthError) throw err;
@@ -722,6 +741,7 @@ async function viewExpense(id) {
   });
   $view.innerHTML = f.html + (receipt ? receiptPhotoCard(receipt) : "");
   f.bind();
+  if (receipt) bindPhotoActions(receipt, () => viewExpense(id));
   document.getElementById("del").onclick = async () => {
     if (!confirm("Usunąć ten wydatek?")) return;
     await api(`/api/expenses/${id}`, { method: "DELETE" });
@@ -735,11 +755,140 @@ function receiptPhotoCard(r, scanning = false) {
     return `<section class="card"><h2>Zdjęcie paragonu</h2><div class="small muted">Zdjęcie usunięte ${r.photo_deleted_at ? dayLabel(r.photo_deleted_at.slice(0, 10)) : ""}. Dane zostały zapisane.</div></section>`;
   }
   let note = "";
-  if (r.photo_delete_after) {
+  if (r.keep_photo) {
+    note = `<div class="photo-note">${icon("bottle")}<span class="grow small">Paragon z kaucją: zdjęcie zostaje${r.deposit_grosze ? ` · kaucja ${fmt(r.deposit_grosze)}` : ""}</span></div>
+      <button type="button" class="btn danger" id="photo-del">Usuń zdjęcie</button>`;
+  } else if (r.photo_delete_after) {
     const days = Math.max(0, Math.ceil((new Date(r.photo_delete_after) - new Date()) / 86400000));
-    note = `<div class="small muted" style="margin-top:8px">Zdjęcie zostanie usunięte za ${days} ${days === 1 ? "dzień" : "dni"}.</div>`;
+    note = `<div class="small muted" style="margin-top:8px">Zdjęcie zostanie usunięte za ${days} ${days === 1 ? "dzień" : "dni"}.</div>
+      <button type="button" class="btn" id="photo-keep" style="margin-top:10px">${icon("bottle")} Zachowaj jako paragon z kaucją</button>`;
   }
   return `<section class="card"><h2>Zdjęcie paragonu</h2><div class="scan${scanning ? " active" : ""}"><img class="receipt-photo" src="/api/receipts/${r.id}/photo" alt="Zdjęcie paragonu"></div>${note}</section>`;
+}
+
+function bindPhotoActions(r, refresh) {
+  const keep = document.getElementById("photo-keep");
+  if (keep) {
+    keep.onclick = async () => {
+      await api(`/api/receipts/${r.id}`, { method: "PATCH", body: { keep_photo: true } });
+      toast("Zdjęcie trafiło do kaucji");
+      refresh();
+    };
+  }
+  const del = document.getElementById("photo-del");
+  if (del) {
+    del.onclick = async () => {
+      if (!confirm("Usunąć zdjęcie paragonu? Wydatek zostanie.")) return;
+      await api(`/api/receipts/${r.id}/photo`, { method: "DELETE" });
+      toast("Usunięto zdjęcie");
+      refresh();
+    };
+  }
+}
+
+async function viewDeposits() {
+  setChrome("Kaucje", { back: "#/" });
+  const list = await api("/api/receipts?keep_photo=true");
+  const total = list.reduce((s, r) => s + r.deposit_grosze, 0);
+  $view.innerHTML = `<section class="card receipt">
+      <div class="receipt-head"><span>Kaucja do odebrania</span><span>${list.length} ${list.length === 1 ? "paragon" : "paragonów"}</span></div>
+      <div class="big">${fmt(total)}</div>
+      <div class="receipt-foot"><span class="muted small">Zdjęcia tych paragonów nie kasują się same.</span></div>
+    </section>
+    ${
+      list.length
+        ? list
+            .map(
+              (r) => `<section class="card deposit" data-id="${r.id}">
+          <a class="deposit-photo" href="/api/receipts/${r.id}/photo" target="_blank" rel="noopener"><img src="/api/receipts/${r.id}/photo" alt="Paragon ${esc(r.merchant || "")}" loading="lazy"></a>
+          <div class="grow">
+            <div class="t">${esc(r.merchant || "Paragon")}</div>
+            <div class="small muted">${r.spent_on ? new Date(r.spent_on + "T12:00:00").toLocaleDateString("pl-PL") : ""}${r.amount_grosze ? ` · paragon ${fmt(r.amount_grosze)}` : ""}</div>
+            <div class="num deposit-amount">${r.deposit_grosze ? `kaucja ${fmt(r.deposit_grosze)}` : `<span class="muted small">kaucja nieodczytana</span>`}</div>
+            <div class="deposit-actions">
+              ${r.expense_id ? `<a class="chip" href="#/expense/${r.expense_id}">Wydatek</a>` : ""}
+              <button class="chip danger-chip" data-del="${r.id}">Usuń zdjęcie</button>
+            </div>
+          </div>
+        </section>`
+            )
+            .join("")
+        : `<section class="card empty">${icon("bottle")}<p>Brak paragonów z kaucją.</p><p class="small">Przy zatwierdzaniu paragonu zaznacz „Paragon z kaucją”, a zdjęcie trafi tutaj i nie skasuje się samo.</p></section>`
+    }`;
+  $view.querySelectorAll("[data-del]").forEach((b) => {
+    b.onclick = async () => {
+      if (!confirm("Usunąć zdjęcie tego paragonu? Wydatek zostanie.")) return;
+      await api(`/api/receipts/${b.dataset.del}/photo`, { method: "DELETE" });
+      toast("Usunięto zdjęcie");
+      viewDeposits();
+    };
+  });
+}
+
+const monthGen = (month) => new Date(month + "-15T12:00:00").toLocaleDateString("pl-PL", { month: "long", year: "numeric" });
+
+async function viewReport(month) {
+  month = month || shiftMonth(thisMonth(), -1);
+  setChrome("Podsumowanie", { back: "#/" });
+  const r = await api(`/api/stats/report?month=${month}`);
+  $view.innerHTML = "";
+  $view.append(monthSwitch(month, (m) => (location.hash = `#/report/${m}`)));
+  const priceList = (rows, up) =>
+    rows
+      .map(
+        (p) => `<li><a href="#/product/${encodeURIComponent(p.product_key)}"><span class="grow"><div class="t">${esc(p.name)}</div>
+          <div class="small muted num">${fmt(p.previous_grosze)} → ${fmt(p.current_grosze)}</div></span>
+          <span class="delta ${up ? "up" : "down"}">${up ? "▲" : "▼"} ${Math.abs(Math.round(((p.current_grosze - p.previous_grosze) / p.previous_grosze) * 100))}%</span></a></li>`
+      )
+      .join("");
+  if (!r.expense_count) {
+    $view.insertAdjacentHTML("beforeend", `<section class="card empty">${icon("chart")}<p>Brak wydatków w tym miesiącu.</p></section>`);
+    return;
+  }
+  $view.insertAdjacentHTML(
+    "beforeend",
+    `<section class="card receipt">
+      <div class="receipt-head"><span>Wydano</span><span>${esc(monthName(month))}</span></div>
+      <div class="big" data-count="${r.total_grosze}" data-key="report-${month}">${fmt(r.total_grosze)}</div>
+      <div class="receipt-foot">${r.previous_total_grosze ? change(r.change_percent, r.total_grosze - r.previous_total_grosze) + ` <span class="muted small">względem poprzedniego miesiąca</span>` : `<span class="muted small">Brak danych z poprzedniego miesiąca</span>`}</div>
+    </section>
+    <section class="card stats3">
+      <div><div class="small muted">Wydatki</div><b class="num">${r.expense_count}</b></div>
+      <div><div class="small muted">Z paragonów</div><b class="num">${r.receipt_count}</b></div>
+      <div><div class="small muted">Średnio dziennie</div><b class="num">${fmt(Math.round(r.total_grosze / new Date(Number(month.slice(0, 4)), Number(month.slice(5)), 0).getDate()))}</b></div>
+    </section>
+    <section class="card"><ul class="list facts">
+      ${r.top_category ? `<li><a href="#/category/${r.top_category.category_id}"><span class="dot" style="background:${esc(r.top_category.color)}"></span><span class="grow"><div class="small muted">Najwięcej poszło na</div><div class="t">${esc(r.top_category.name)}</div></span><span class="amount">${fmt(r.top_category.total_grosze)}<div class="small muted">${Math.round((r.top_category.total_grosze / r.total_grosze) * 100)}%</div></span></a></li>` : ""}
+      ${r.biggest_category_increase ? `<li><a href="#/category/${r.biggest_category_increase.category_id}"><span class="dot" style="background:${esc(r.biggest_category_increase.color)}"></span><span class="grow"><div class="small muted">Najbardziej wzrosło</div><div class="t">${esc(r.biggest_category_increase.name)}</div></span><span class="amount"><span class="delta up">+${fmt(r.biggest_category_increase.change_grosze)}</span></span></a></li>` : ""}
+      ${r.biggest_expense ? `<li><a href="#/expense/${r.biggest_expense.id}"><span class="dot" style="background:var(--muted)"></span><span class="grow"><div class="small muted">Największy wydatek</div><div class="t">${esc(r.biggest_expense.label)}</div></span><span class="amount">${fmt(r.biggest_expense.amount_grosze)}<div class="small muted">${dayLabel(r.biggest_expense.spent_on)}</div></span></a></li>` : ""}
+    </ul></section>
+    ${r.price_rises.length ? `<section class="card"><h2>Podrożało</h2><ul class="list">${priceList(r.price_rises, true)}</ul></section>` : ""}
+    ${r.price_drops.length ? `<section class="card"><h2>Potaniało</h2><ul class="list">${priceList(r.price_drops, false)}</ul></section>` : ""}
+    ${!r.price_rises.length && !r.price_drops.length ? `<p class="small muted hint">Zmiany cen pojawią się, gdy kupisz ten sam produkt w dwóch miesiącach.</p>` : ""}`
+  );
+}
+
+function storeGet(key) {
+  try { return localStorage.getItem(key); } catch { return null; }
+}
+function storeSet(key, value) {
+  try { localStorage.setItem(key, value); } catch {}
+}
+
+async function reportCard() {
+  if (Number(today().slice(8)) > 7) return "";
+  const month = shiftMonth(thisMonth(), -1);
+  if (storeGet("report-seen") === month) return "";
+  const r = await api(`/api/stats/report?month=${month}`).catch(() => null);
+  if (!r || !r.expense_count) return "";
+  const rise = r.price_rises[0];
+  return `<section class="card report-card">
+      <button class="icon-btn report-close" aria-label="Ukryj">${icon("x")}</button>
+      <div class="small muted">Podsumowanie: ${esc(monthGen(month))}</div>
+      <div class="report-line">Wydano <b class="num">${fmt(r.total_grosze)}</b>${r.change_percent ? `, o <b class="num">${Math.abs(r.change_percent)}%</b> ${r.change_percent > 0 ? "więcej" : "mniej"} niż miesiąc wcześniej` : ""}.</div>
+      ${r.top_category ? `<div class="small">Najwięcej: ${esc(r.top_category.name)} (${fmt(r.top_category.total_grosze)})${rise ? ` · najbardziej podrożało: ${esc(rise.name)}` : ""}</div>` : ""}
+      <a class="btn" href="#/report/${month}">${icon("chart")} Zobacz podsumowanie</a>
+    </section>`;
 }
 
 async function viewReceipts() {
@@ -789,12 +938,13 @@ async function viewReceipt(id) {
       description: "",
       items: ocr.items || [],
     },
+    keepPhoto: hasDeposit(ocr.items),
     submitLabel: "Zatwierdź i zapisz",
     extraButtons: `${failed ? `<button type="button" class="btn" id="retry">Spróbuj odczytać ponownie</button>` : ""}
       <button type="button" class="btn danger" id="discard">Odrzuć paragon</button>`,
     onSubmit: async (data) => {
       await api(`/api/receipts/${id}/confirm`, { method: "POST", body: data });
-      toast("Zapisano. Zdjęcie zostanie usunięte za 10 dni.");
+      toast(data.keep_photo ? "Zapisano. Zdjęcie trafiło do kaucji." : "Zapisano. Zdjęcie zostanie usunięte za 10 dni.");
       location.hash = "#/";
     },
   });
@@ -942,6 +1092,10 @@ async function viewSettings() {
         .join("")}</ul>
       <a class="btn" href="#/edit-category/new">+ Nowa sekcja</a>
     </section>
+    <section class="card"><ul class="list">
+      <li><a href="#/report"><span class="ic-sm">${icon("chart")}</span><span class="grow"><div class="t">Podsumowania miesięcy</div><div class="small muted">Ile wydane, co podrożało</div></span><span class="chev">${icon("right")}</span></a></li>
+      <li><a href="#/deposits"><span class="ic-sm">${icon("bottle")}</span><span class="grow"><div class="t">Paragony z kaucją</div><div class="small muted">Zdjęcia, które się nie kasują</div></span><span class="chev">${icon("right")}</span></a></li>
+    </ul></section>
     ${exportCard()}
     <section class="card"><h2>Instalacja na telefonie</h2>
       <div class="small muted">Android (Chrome): menu ⋮ → „Zainstaluj aplikację”.<br>iPhone (Safari): Udostępnij → „Do ekranu początkowego”.</div>
@@ -1349,6 +1503,8 @@ const routes = [
   [/^#\/search$/, viewSearch, "expenses"],
   [/^#\/products$/, viewProducts, "dashboard"],
   [/^#\/product\/(.+)$/, viewProduct, "dashboard"],
+  [/^#\/deposits$/, viewDeposits, "dashboard"],
+  [/^#\/report(?:\/(\d{4}-\d{2}))?$/, viewReport, "dashboard"],
 ];
 
 function setChrome(title, { back = null, tabbar = true } = {}) {

@@ -80,6 +80,7 @@ NEW_COLUMNS = [
     ("expenses", "recurring_id", "INTEGER REFERENCES recurring_expenses(id)", False),
     ("expenses", "client_id", "VARCHAR(64)", True),
     ("receipts", "client_id", "VARCHAR(64)", True),
+    ("receipts", "keep_photo", "BOOLEAN NOT NULL DEFAULT 0", False),
 ]
 
 

@@ -14,7 +14,7 @@ log = logging.getLogger(__name__)
 
 
 def photo_delete_after(receipt: Receipt) -> datetime | None:
-    if receipt.confirmed_at is None or receipt.photo_path is None:
+    if receipt.confirmed_at is None or receipt.photo_path is None or receipt.keep_photo:
         return None
     confirmed = receipt.confirmed_at
     if confirmed.tzinfo is None:

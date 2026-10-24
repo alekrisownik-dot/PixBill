@@ -248,3 +248,48 @@ def test_export_xlsx(client):
     assert wb.sheetnames == ["Wydatki", "Pozycje"]
     assert wb["Wydatki"]["B2"].value == 12.34
     assert wb["Pozycje"]["B2"].value == "Chleb"
+
+
+def test_deposit_receipt_keeps_photo(client, monkeypatch):
+    from app.cleanup import delete_expired_photos
+    from app.db import new_session
+
+    monkeypatch.setattr(ollama, "read_receipt", lambda path: ({"merchant": "Lidl", "date": None, "total_grosze": 1000, "items": []}, ""))
+    ids = [client.post("/api/receipts", files={"file": ("p.jpg", jpeg_bytes(), "image/jpeg")}).json()["id"] for _ in range(2)]
+    for rid, keep in zip(ids, [True, False]):
+        r = client.post(
+            f"/api/receipts/{rid}/confirm",
+            json={"amount_grosze": 1000, "spent_on": "2026-10-20", "category_id": first_category(client), "keep_photo": keep,
+                  "items": [{"name": "Woda 1,5L", "price_grosze": 500}, {"name": "Kaucja butelka", "price_grosze": 50}]},
+        )
+        assert r.status_code == 201
+
+    kept = client.get(f"/api/receipts/{ids[0]}").json()
+    assert kept["keep_photo"] and kept["photo_delete_after"] is None and kept["deposit_grosze"] == 50
+    with new_session() as db:
+        assert delete_expired_photos(db, now=datetime.now(timezone.utc) + timedelta(days=365)) == 1
+    assert client.get(f"/api/receipts/{ids[0]}/photo").status_code == 200
+    assert client.get(f"/api/receipts/{ids[1]}/photo").status_code == 410
+    assert [r["id"] for r in client.get("/api/receipts", params={"keep_photo": True}).json()] == [ids[0]]
+
+    assert client.patch(f"/api/receipts/{ids[1]}", json={"keep_photo": True}).status_code == 409
+    r = client.delete(f"/api/receipts/{ids[0]}/photo").json()
+    assert not r["keep_photo"] and not r["has_photo"]
+    assert client.get(f"/api/receipts/{ids[0]}/photo").status_code == 410
+
+
+def test_month_report(client):
+    food, fuel = first_category(client), client.get("/api/categories").json()[2]["id"]
+    for day, amount, cat, items in [
+        ("2026-09-05", 1000, food, [{"name": "Masło", "price_grosze": 699}, {"name": "Kawa", "price_grosze": 2000}]),
+        ("2026-10-05", 3000, food, [{"name": "Masło", "price_grosze": 799}, {"name": "Kawa", "price_grosze": 1800}]),
+        ("2026-10-07", 20000, fuel, []),
+    ]:
+        client.post("/api/expenses", json={"amount_grosze": amount, "spent_on": day, "category_id": cat, "description": "x", "items": items})
+    r = client.get("/api/stats/report", params={"month": "2026-10"}).json()
+    assert r["total_grosze"] == 23000 and r["expense_count"] == 2
+    assert r["top_category"]["category_id"] == fuel
+    assert r["biggest_category_increase"]["category_id"] == food
+    assert r["biggest_expense"]["amount_grosze"] == 20000
+    assert [(p["name"], p["previous_grosze"], p["current_grosze"]) for p in r["price_rises"]] == [("Masło", 699, 799)]
+    assert [p["name"] for p in r["price_drops"]] == ["Kawa"]

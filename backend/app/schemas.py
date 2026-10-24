@@ -93,6 +93,15 @@ class ReceiptOut(BaseModel):
     photo_deleted_at: datetime | None
     photo_delete_after: datetime | None
     expense_id: int | None
+    keep_photo: bool = False
+    deposit_grosze: int = 0
+    merchant: str | None = None
+    spent_on: date | None = None
+    amount_grosze: int | None = None
+
+
+class ReceiptUpdate(BaseModel):
+    keep_photo: bool
 
 
 class CategoryStat(BaseModel):
@@ -168,3 +177,31 @@ class PricePoint(BaseModel):
     merchant: str | None
     name: str
     price_grosze: int
+
+
+class PriceChange(BaseModel):
+    product_key: str
+    name: str
+    previous_grosze: int
+    current_grosze: int
+
+
+class BiggestExpense(BaseModel):
+    id: int
+    label: str
+    amount_grosze: int
+    spent_on: date
+
+
+class MonthReport(BaseModel):
+    month: str
+    total_grosze: int
+    previous_total_grosze: int
+    change_percent: float | None
+    expense_count: int
+    receipt_count: int
+    top_category: CategoryStat | None
+    biggest_category_increase: CategoryStat | None
+    biggest_expense: BiggestExpense | None
+    price_rises: list[PriceChange]
+    price_drops: list[PriceChange]

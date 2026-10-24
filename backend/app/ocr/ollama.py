@@ -21,7 +21,7 @@ Odczytaj zdjęcie paragonu i zwróć WYŁĄCZNIE JSON w formacie:
 }
 W "items" wpisz każdą kupioną pozycję po kolei: nazwę tak jak na paragonie i cenę za cały wiersz
 (np. "2 x 3,49 6,98" daje cenę 6.98). Pomiń literę stawki VAT po cenie. Rabat lub upust wpisz
-jako osobną pozycję z ujemną ceną. Nie wpisuj do "items" sumy, podatku PTU ani reszty.
+jako osobną pozycję z ujemną ceną. Kaucję za butelki lub puszki wpisz jako osobną pozycję z nazwą zawierającą słowo "kaucja". Nie wpisuj do "items" sumy, podatku PTU ani reszty.
 Suma to zwykle wiersz "SUMA PLN". Nie zgaduj: jeśli czegoś nie widać, wpisz null."""
 
 MAX_SIDE = 1600
