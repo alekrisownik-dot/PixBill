@@ -162,8 +162,84 @@ input[type="color"] { padding: 4px; height: 48px; }
   bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 12px);
   background: var(--text); color: var(--bg);
   padding: 12px 16px; border-radius: 12px; text-align: center;
+  box-shadow: 0 8px 24px rgba(0,0,0,.25);
+  opacity: 0; transform: translateY(16px) scale(.98);
+  transition: opacity .25s ease, transform .3s cubic-bezier(.2,.9,.3,1.2);
 }
+#toast.show { opacity: 1; transform: none; }
 
 .login { max-width: 360px; margin: 15vh auto 0; text-align: center; }
 .login img { width: 80px; height: 80px; border-radius: 20px; }
 .empty { text-align: center; padding: 24px 0; color: var(--muted); }
+
+:root {
+  --ease-out: cubic-bezier(.2, .8, .2, 1);
+  --ease-spring: cubic-bezier(.2, .9, .3, 1.25);
+}
+
+@keyframes in-fade  { from { opacity: 0; transform: translateY(14px); } }
+@keyframes in-right { from { opacity: 0; transform: translateX(28px); } }
+@keyframes in-left  { from { opacity: 0; transform: translateX(-28px); } }
+@keyframes row-in   { from { opacity: 0; transform: translateY(6px); } }
+
+#view.enter > * { animation: in-fade .45s var(--ease-out) backwards; animation-delay: calc(var(--i, 0) * 55ms); }
+#view.enter.from-right > * { animation-name: in-right; }
+#view.enter.from-left > * { animation-name: in-left; }
+#view.enter .list li { animation: row-in .35s var(--ease-out) backwards; animation-delay: calc(120ms + var(--j, 0) * 35ms); }
+
+.share { height: 4px; border-radius: 4px; background: var(--line); margin-top: 6px; overflow: hidden; }
+.share i { display: block; height: 100%; width: var(--w); border-radius: 4px; transform-origin: left; }
+#view.enter .share i { animation: grow-x .9s var(--ease-out) backwards; animation-delay: calc(250ms + var(--j, 0) * 60ms); }
+@keyframes grow-x { from { transform: scaleX(0); } }
+
+.btn, .chip, .month-switch button, .icon-btn, .tabbar a, .banner {
+  transition: transform .15s var(--ease-out), background-color .2s, border-color .2s, box-shadow .2s, color .2s, opacity .2s;
+}
+.btn:active:not(:disabled), .chip:active, .month-switch button:active:not(:disabled), .banner:active { transform: scale(.96); }
+.chip[aria-pressed="true"] { animation: chip-pop .3s var(--ease-spring); }
+@keyframes chip-pop { 50% { transform: scale(1.06); } }
+.month-switch button:disabled { opacity: .35; }
+
+.list li { transition: background-color .15s; }
+.list li:has(a):active { background: var(--line); }
+
+@media (hover: hover) {
+  .btn:hover:not(:disabled) { box-shadow: 0 4px 14px rgba(0,0,0,.08); }
+  .card { transition: box-shadow .25s, transform .25s var(--ease-out); }
+  .card:hover { box-shadow: 0 6px 22px rgba(0,0,0,.07); }
+  .list li:has(a):hover { background: color-mix(in srgb, var(--line) 50%, transparent); }
+}
+
+.tabbar a { position: relative; }
+.tabbar a.active .ti { animation: tab-pop .4s var(--ease-spring); }
+.tabbar a:not(.add)::after {
+  content: ""; position: absolute; bottom: -6px; width: 4px; height: 4px; border-radius: 50%;
+  background: var(--accent); opacity: 0; transform: scale(0); transition: opacity .2s, transform .3s var(--ease-spring);
+}
+.tabbar a.active::after { opacity: 1; transform: scale(1); }
+@keyframes tab-pop { 40% { transform: translateY(-4px) scale(1.12); } }
+.tabbar a.add span { transition: transform .25s var(--ease-spring), box-shadow .2s; }
+.tabbar a.add:active span { transform: scale(.9) rotate(90deg); }
+
+.banner { position: relative; overflow: hidden; }
+.banner::after {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(100deg, transparent 30%, rgba(255,255,255,.35) 50%, transparent 70%);
+  transform: translateX(-100%); animation: shine 3.2s ease-in-out 1s infinite;
+}
+@keyframes shine { 40%, 100% { transform: translateX(100%); } }
+
+.scan { position: relative; border-radius: 12px; overflow: hidden; }
+.scan.active::after {
+  content: ""; position: absolute; left: 0; right: 0; height: 14%; top: -14%;
+  background: linear-gradient(to bottom, transparent, color-mix(in srgb, var(--accent) 16%, transparent) 94%, var(--accent) 94%);
+  filter: drop-shadow(0 0 6px var(--accent));
+  animation: scan 1.6s ease-in-out infinite alternate;
+}
+@keyframes scan { from { top: -14%; } to { top: 100%; } }
+
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}

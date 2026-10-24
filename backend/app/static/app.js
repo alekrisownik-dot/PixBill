@@ -48,8 +48,45 @@ function toast(msg) {
   const el = document.getElementById("toast");
   el.textContent = msg;
   el.hidden = false;
+  requestAnimationFrame(() => el.classList.add("show"));
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => (el.hidden = true), 2500);
+  toastTimer = setTimeout(() => {
+    el.classList.remove("show");
+    toastTimer = setTimeout(() => (el.hidden = true), 250);
+  }, 2500);
+}
+
+const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+function animateIn(direction = "fade") {
+  if (reduceMotion) return;
+  const items = [...$view.children];
+  items.forEach((el, i) => el.style.setProperty("--i", Math.min(i, 8)));
+  $view.querySelectorAll(".list li").forEach((li, j) => li.style.setProperty("--j", Math.min(j, 10)));
+  $view.classList.remove("enter", "from-right", "from-left", "from-fade");
+  void $view.offsetWidth;
+  $view.classList.add("enter", `from-${direction === "forward" ? "right" : direction === "back" ? "left" : "fade"}`);
+  countUp();
+}
+
+const lastCounts = {};
+function countUp() {
+  $view.querySelectorAll("[data-count]").forEach((el) => {
+    const target = Number(el.dataset.count);
+    const key = el.dataset.key || "x";
+    const from = lastCounts[key] ?? 0;
+    lastCounts[key] = target;
+    if (reduceMotion || from === target) return;
+    const start = performance.now();
+    const duration = 750;
+    const step = (now) => {
+      const t = Math.min(1, (now - start) / duration);
+      const eased = 1 - Math.pow(1 - t, 3);
+      el.textContent = fmt(Math.round(from + (target - from) * eased));
+      if (t < 1 && el.isConnected) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  });
 }
 
 class AuthError extends Error {}
@@ -90,19 +127,60 @@ function destroyCharts() {
 }
 const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
+if (window.Chart) {
+  Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
+  Chart.defaults.animation = reduceMotion ? false : { duration: 900, easing: "easeOutQuart" };
+  Chart.defaults.plugins.tooltip.padding = 10;
+  Chart.defaults.plugins.tooltip.cornerRadius = 10;
+  Chart.defaults.plugins.tooltip.displayColors = false;
+}
+
+const stagger = (ctx) =>
+  ctx.type === "data" && ctx.mode === "default" ? ctx.dataIndex * 70 + ctx.datasetIndex * 140 : 0;
+
+const donutCenter = {
+  id: "donutCenter",
+  afterDraw(chart) {
+    const { ctx, chartArea } = chart;
+    if (!chartArea) return;
+    const active = chart.getActiveElements()[0];
+    const data = chart.data.datasets[0].data;
+    const total = data.reduce((a, b) => a + b, 0);
+    const label = active ? chart.data.labels[active.index] : "Razem";
+    const value = active ? data[active.index] : total;
+    const share = active && total ? ` · ${Math.round((value / total) * 100)}%` : "";
+    const x = (chartArea.left + chartArea.right) / 2;
+    const y = (chartArea.top + chartArea.bottom) / 2;
+    ctx.save();
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = cssVar("--muted");
+    ctx.font = `500 13px ${Chart.defaults.font.family}`;
+    ctx.fillText(label + share, x, y - 14);
+    ctx.fillStyle = cssVar("--text");
+    ctx.font = `700 20px ${Chart.defaults.font.family}`;
+    ctx.fillText(fmt(value), x, y + 10);
+    ctx.restore();
+  },
+};
+
 function donut(canvas, labels, values, colors) {
   charts.push(
     new Chart(canvas, {
       type: "doughnut",
-      data: { labels, datasets: [{ data: values, backgroundColor: colors, borderColor: cssVar("--card"), borderWidth: 2 }] },
+      data: {
+        labels,
+        datasets: [{ data: values, backgroundColor: colors, borderColor: cssVar("--card"), borderWidth: 3, borderRadius: 6, hoverOffset: 12 }],
+      },
       options: {
         maintainAspectRatio: false,
-        cutout: "62%",
-        plugins: {
-          legend: { display: false },
-          tooltip: { callbacks: { label: (ctx) => `${ctx.label}: ${fmt(ctx.raw)}` } },
-        },
+        cutout: "66%",
+        layout: { padding: 8 },
+        animation: reduceMotion ? false : { animateRotate: true, animateScale: true, duration: 1100, easing: "easeOutQuart" },
+        plugins: { legend: { display: false }, tooltip: { enabled: false } },
+        onHover: (e, els, chart) => requestAnimationFrame(() => chart.draw()),
       },
+      plugins: [donutCenter],
     })
   );
 }
@@ -114,6 +192,7 @@ function bars(canvas, labels, datasets) {
       data: { labels, datasets },
       options: {
         maintainAspectRatio: false,
+        animation: reduceMotion ? false : { delay: stagger, duration: 700, easing: "easeOutBack" },
         plugins: {
           legend: { display: datasets.length > 1, labels: { color: cssVar("--muted") } },
           tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${fmt(ctx.raw)}` } },
@@ -137,8 +216,17 @@ function monthSwitch(month, onChange) {
   wrap.className = "month-switch";
   wrap.innerHTML = `<button aria-label="Poprzedni miesiąc">‹</button><strong>${esc(monthName(month))}</strong><button aria-label="Następny miesiąc">›</button>`;
   const [prev, , next] = wrap.children;
-  prev.onclick = () => onChange(shiftMonth(month, -1));
-  next.onclick = () => onChange(shiftMonth(month, 1));
+  const switchTo = async (m, direction) => {
+    destroyCharts();
+    try {
+      await onChange(m);
+      animateIn(direction);
+    } catch (err) {
+      handleError(err);
+    }
+  };
+  prev.onclick = () => switchTo(shiftMonth(month, -1), "back");
+  next.onclick = () => switchTo(shiftMonth(month, 1), "forward");
   next.disabled = month >= thisMonth();
   return wrap;
 }
@@ -207,7 +295,7 @@ async function viewDashboard() {
     "beforeend",
     `<section class="card">
       <h2>Wydano w tym miesiącu</h2>
-      <div class="big">${fmt(summary.total_grosze)}</div>
+      <div class="big" data-count="${summary.total_grosze}" data-key="month-total">${fmt(summary.total_grosze)}</div>
       <div class="small">${summary.previous_total_grosze ? change(summary.change_percent, summary.change_grosze) + ` <span class="muted">vs ${esc(monthName(summary.previous_month))}</span>` : `<span class="muted">brak danych z poprzedniego miesiąca</span>`}</div>
     </section>
     <section class="card">
@@ -217,7 +305,8 @@ async function viewDashboard() {
         .map(
           (c) => `<li><a href="#/category/${c.category_id}">
             <span class="dot" style="background:${esc(c.color)}"></span>
-            <span class="grow"><div class="t">${esc(c.name)}</div><div class="small">${change(c.change_percent, c.change_grosze)}</div></span>
+            <span class="grow"><div class="t">${esc(c.name)}</div><div class="small">${change(c.change_percent, c.change_grosze)}</div>
+              <div class="share"><i style="--w:${summary.total_grosze ? (c.total_grosze / summary.total_grosze) * 100 : 0}%;background:${esc(c.color)}"></i></div></span>
             <span class="amount">${fmt(c.total_grosze)}<div class="small muted">${summary.total_grosze ? Math.round((c.total_grosze / summary.total_grosze) * 100) : 0}%</div></span>
           </a></li>`
         )
@@ -405,7 +494,7 @@ async function viewExpense(id) {
   };
 }
 
-function receiptPhotoCard(r) {
+function receiptPhotoCard(r, scanning = false) {
   if (!r.has_photo) {
     return `<section class="card"><h2>Zdjęcie paragonu</h2><div class="small muted">Zdjęcie usunięte ${r.photo_deleted_at ? dayLabel(r.photo_deleted_at.slice(0, 10)) : ""}. Dane zostały zapisane.</div></section>`;
   }
@@ -414,7 +503,7 @@ function receiptPhotoCard(r) {
     const days = Math.max(0, Math.ceil((new Date(r.photo_delete_after) - new Date()) / 86400000));
     note = `<div class="small muted" style="margin-top:8px">Zdjęcie zostanie usunięte za ${days} ${days === 1 ? "dzień" : "dni"}.</div>`;
   }
-  return `<section class="card"><h2>Zdjęcie paragonu</h2><img class="receipt-photo" src="/api/receipts/${r.id}/photo" alt="Zdjęcie paragonu">${note}</section>`;
+  return `<section class="card"><h2>Zdjęcie paragonu</h2><div class="scan${scanning ? " active" : ""}"><img class="receipt-photo" src="/api/receipts/${r.id}/photo" alt="Zdjęcie paragonu"></div>${note}</section>`;
 }
 
 async function viewReceipts() {
@@ -446,7 +535,7 @@ async function viewReceipt(id) {
     return;
   }
   if (r.status === "pending") {
-    $view.innerHTML = `<section class="card empty"><div class="spinner"></div>Odczytuję paragon…<div class="small">Na laptopie z kartą graficzną trwa to zwykle kilka–kilkanaście sekund. Możesz wyjść, paragon poczeka na liście.</div></section>${receiptPhotoCard(r)}`;
+    $view.innerHTML = `<section class="card empty"><div class="spinner"></div>Odczytuję paragon…<div class="small">Na laptopie z kartą graficzną trwa to zwykle kilka–kilkanaście sekund. Możesz wyjść, paragon poczeka na liście.</div></section>${receiptPhotoCard(r, true)}`;
     pollTimer = setTimeout(() => {
       if (location.hash === `#/receipt/${id}`) viewReceipt(id).catch(handleError);
     }, 3000);
@@ -540,6 +629,7 @@ async function viewCategories() {
         options: {
           indexAxis: "y",
           maintainAspectRatio: false,
+          animation: reduceMotion ? false : { delay: stagger, duration: 700, easing: "easeOutQuart" },
           plugins: {
             legend: { labels: { color: cssVar("--muted") } },
             tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${fmt(ctx.raw)}` } },
@@ -576,7 +666,7 @@ async function viewCategory(id) {
     "beforeend",
     `<section class="card">
       <h2>${esc(cat.name)} · ${esc(monthName(month))}</h2>
-      <div class="big">${fmt(total)}</div>
+      <div class="big" data-count="${total}" data-key="cat-${id}">${fmt(total)}</div>
       <div class="small">${prev ? change(Math.round(((total - prev) / prev) * 1000) / 10, total - prev) : ""}</div>
       <div class="small muted">Średnio miesięcznie (gdy były wydatki): ${fmt(avg)}</div>
     </section>
@@ -772,6 +862,18 @@ function handleError(err) {
   $view.innerHTML = `<div class="card empty">Coś poszło nie tak: ${esc(err.message)}<p><button class="btn" onclick="route()">Spróbuj ponownie</button></p></div>`;
 }
 
+const TAB_ORDER = ["#/", "#/expenses", "#/add", "#/categories", "#/settings"];
+let lastHash = null;
+
+function navDirection(from, to) {
+  if (from === null) return "fade";
+  const a = TAB_ORDER.indexOf(from), b = TAB_ORDER.indexOf(to);
+  if (a >= 0 && b >= 0) return b > a ? "forward" : b < a ? "back" : "fade";
+  if (a >= 0) return "forward";
+  if (b >= 0) return "back";
+  return "fade";
+}
+
 async function route() {
   clearTimeout(pollTimer);
   destroyCharts();
@@ -781,8 +883,11 @@ async function route() {
     if (!match) continue;
     document.querySelectorAll(".tabbar a").forEach((a) => a.classList.toggle("active", a.dataset.tab === tab));
     window.scrollTo(0, 0);
+    const direction = navDirection(lastHash, hash === "#" ? "#/" : hash);
+    lastHash = hash === "#" ? "#/" : hash;
     try {
       await view(...match.slice(1).map((v) => (/^\d+$/.test(v) ? Number(v) : v)));
+      animateIn(direction);
     } catch (err) {
       handleError(err);
     }
