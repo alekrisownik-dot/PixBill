@@ -28,7 +28,30 @@ const ICONS = {
   tag: '<path d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9z"/><circle cx="8" cy="8" r="1.5"/>',
   bottle: '<path d="M10 2h4v3l1.5 2.5a3 3 0 0 1 .5 1.6V20a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2V9.1a3 3 0 0 1 .5-1.6L10 5z"/><path d="M8 12h8M8 17h8"/>',
   chart: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+  calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+  trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
+  cart: '<path d="M3 4h2l2.4 11h10.2L20 7H6.2"/><circle cx="9" cy="19.5" r="1.5"/><circle cx="17" cy="19.5" r="1.5"/>',
+  home: '<path d="M4 11 12 4l8 7"/><path d="M6 10v10h12V10"/><path d="M10 20v-5h4v5"/>',
+  car: '<path d="M4 16v-4l2-5h12l2 5v4z"/><path d="M4 12h16"/><circle cx="7.5" cy="16.5" r="1.5"/><circle cx="16.5" cy="16.5" r="1.5"/>',
+  fuel: '<path d="M4 21V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v16M3 21h12M4 10h10"/><path d="M14 8h2a2 2 0 0 1 2 2v6a1.5 1.5 0 0 0 3 0V9l-3-3"/>',
+  bolt: '<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>',
+  heart: '<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>',
+  pill: '<rect x="3" y="8" width="18" height="8" rx="4" transform="rotate(-35 12 12)"/><path d="m9.5 8.4 5 7.2"/>',
+  film: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4"/>',
+  utensils: '<path d="M7 3v8a2 2 0 0 0 2 2v8M5 3v6M9 3v6M17 21V3c-2 0-3 2-3 5v5h3"/>',
+  coffee: '<path d="M4 9h13v5a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5z"/><path d="M17 11h1.5a2.5 2.5 0 0 1 0 5H17M8 3v3M12 3v3"/>',
+  shirt: '<path d="M8 3 3 6l2 5 2-1v11h10V10l2 1 2-5-5-3a3 3 0 0 1-8 0z"/>',
+  gift: '<rect x="3" y="8" width="18" height="4" rx="1"/><path d="M5 12v9h14v-9M12 8v13M12 8C10 4 6 4 7 7s5 1 5 1 4 2 5-1-3-3-5 1"/>',
+  paw: '<circle cx="6" cy="10" r="2"/><circle cx="10" cy="6" r="2"/><circle cx="14" cy="6" r="2"/><circle cx="18" cy="10" r="2"/><path d="M8 17a4 4 0 0 1 8 0 2.5 2.5 0 0 1-4 2 2.5 2.5 0 0 1-4-2z"/>',
+  baby: '<circle cx="12" cy="8" r="5"/><path d="M10 8h.01M14 8h.01M10.5 10.5a2 2 0 0 0 3 0M7 21v-3a5 5 0 0 1 10 0v3"/>',
+  book: '<path d="M4 4h6a2 2 0 0 1 2 2v14a2 2 0 0 0-2-2H4zM20 4h-6a2 2 0 0 0-2 2v14a2 2 0 0 1 2-2h6z"/>',
+  phone: '<rect x="6" y="2" width="12" height="20" rx="2"/><path d="M11 18h2"/>',
+  plane: '<path d="M10 14 3 12l1-2 7 1 4-6h2l-2 7 5 1 1 2-6 1-2 6h-2z"/>',
+  dumbbell: '<path d="M6 8v8M3 10v4M18 8v8M21 10v4M6 12h12"/>',
+  wrench: '<path d="M14.5 6.5a4 4 0 0 0 5 5L12 19a2.1 2.1 0 0 1-3-3l7.5-7.5a4 4 0 0 0-5-5l2.5 2.5-1 2-2-1z"/>',
+  dots: '<circle cx="6" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="18" cy="12" r="1.5"/>',
 };
+const CATEGORY_ICONS = ["cart", "home", "car", "fuel", "bolt", "heart", "pill", "film", "utensils", "coffee", "shirt", "gift", "paw", "baby", "book", "phone", "plane", "dumbbell", "wrench", "receipt", "dots"];
 const icon = (name) =>
   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]}</svg>`;
 
@@ -282,6 +305,13 @@ async function categories(force = false) {
   if (!categoriesCache || force) categoriesCache = await api("/api/categories?include_archived=true");
   return categoriesCache;
 }
+function catTile(c, iconName) {
+  const id = c?.category_id ?? c?.id;
+  const known = (categoriesCache || []).find((x) => x.id === id);
+  const color = c?.color || known?.color || "#8a918c";
+  const name = iconName || known?.icon || c?.icon;
+  return `<span class="cat-ic" style="--c:${esc(color)}">${icon(ICONS[name] ? name : "dots")}</span>`;
+}
 const activeCategories = async () => (await categories()).filter((c) => !c.archived);
 const categoryById = async (id) => (await categories()).find((c) => c.id === id);
 
@@ -399,8 +429,8 @@ function monthSwitch(month, onChange) {
 function expenseRow(e, cat) {
   const label = e.description || e.merchant || cat?.name || "Wydatek";
   const sub = [dayLabel(e.spent_on), cat?.name, { receipt: "paragon", recurring: "opłata stała" }[e.source]].filter(Boolean).join(" · ");
-  return `<li><a href="#/expense/${e.id}">
-    <span class="dot" style="background:${esc(cat?.color || "#999")}"></span>
+  return `<li class="swipe" data-expense="${e.id}" data-amount="${e.amount_grosze}"><button class="swipe-del" aria-label="Usuń wydatek">${icon("trash")}<span>Usuń</span></button><a href="#/expense/${e.id}">
+    ${catTile(cat || { category_id: e.category_id })}
     <span class="grow"><div class="t">${esc(label)}</div><div class="small muted">${esc(sub)}</div></span>
     <span class="amount">${fmt(e.amount_grosze)}</span></a></li>`;
 }
@@ -490,7 +520,7 @@ async function viewDashboard() {
       <ul class="list">${summary.categories
         .map(
           (c) => `<li><a href="#/category/${c.category_id}">
-            <span class="dot" style="background:${esc(c.color)}"></span>
+            ${catTile(c)}
             <span class="grow"><div class="t">${esc(c.name)}</div><div class="small">${change(c.change_percent, c.change_grosze)}</div>
               <div class="share"><i style="--w:${summary.total_grosze ? (c.total_grosze / summary.total_grosze) * 100 : 0}%;background:${esc(c.color)}"></i></div></span>
             <span class="amount">${fmt(c.total_grosze)}<div class="small muted">${summary.total_grosze ? Math.round((c.total_grosze / summary.total_grosze) * 100) : 0}%</div></span>
@@ -502,6 +532,8 @@ async function viewDashboard() {
       <h2>Ostatnie 6 miesięcy</h2>
       <div class="chart-box bar"><canvas id="trend"></canvas></div>
     </section>
+    ${budgetCard(cats, summary)}
+    ${calendarCard(month, expenses)}
     ${deposits.length ? `<a class="banner deposit-banner" href="#/deposits">${icon("bottle")}<span>Paragony z kaucją: ${deposits.length}${depositTotal ? ` · ${fmt(depositTotal)}` : ""}</span><span class="chev">${icon("right")}</span></a>` : ""}
     ${products.length ? `<section class="card">
       <h2>Najwięcej wydane na produkty</h2>
@@ -515,6 +547,7 @@ async function viewDashboard() {
     </section>`
   );
 
+  bindCalendar(month, expenses, catMap);
   if (withSpend.length) {
     donut(
       document.getElementById("pie"),
@@ -711,6 +744,7 @@ async function viewNewExpense() {
       const client_id = newClientId();
       try {
         await api("/api/expenses", { method: "POST", body: { ...data, client_id } });
+        await printReceipt(data);
         toast("Zapisano");
       } catch (err) {
         if (!(err instanceof OfflineError)) throw err;
@@ -830,7 +864,7 @@ const monthGen = (month) => new Date(month + "-15T12:00:00").toLocaleDateString(
 async function viewReport(month) {
   month = month || shiftMonth(thisMonth(), -1);
   setChrome("Podsumowanie", { back: "#/" });
-  const r = await api(`/api/stats/report?month=${month}`);
+  const [r] = await Promise.all([api(`/api/stats/report?month=${month}`), categories()]);
   $view.innerHTML = "";
   $view.append(monthSwitch(month, (m) => (location.hash = `#/report/${m}`)));
   const priceList = (rows, up) =>
@@ -858,9 +892,9 @@ async function viewReport(month) {
       <div><div class="small muted">Średnio dziennie</div><b class="num">${fmt(Math.round(r.total_grosze / new Date(Number(month.slice(0, 4)), Number(month.slice(5)), 0).getDate()))}</b></div>
     </section>
     <section class="card"><ul class="list facts">
-      ${r.top_category ? `<li><a href="#/category/${r.top_category.category_id}"><span class="dot" style="background:${esc(r.top_category.color)}"></span><span class="grow"><div class="small muted">Najwięcej poszło na</div><div class="t">${esc(r.top_category.name)}</div></span><span class="amount">${fmt(r.top_category.total_grosze)}<div class="small muted">${Math.round((r.top_category.total_grosze / r.total_grosze) * 100)}%</div></span></a></li>` : ""}
-      ${r.biggest_category_increase ? `<li><a href="#/category/${r.biggest_category_increase.category_id}"><span class="dot" style="background:${esc(r.biggest_category_increase.color)}"></span><span class="grow"><div class="small muted">Najbardziej wzrosło</div><div class="t">${esc(r.biggest_category_increase.name)}</div></span><span class="amount"><span class="delta up">+${fmt(r.biggest_category_increase.change_grosze)}</span></span></a></li>` : ""}
-      ${r.biggest_expense ? `<li><a href="#/expense/${r.biggest_expense.id}"><span class="dot" style="background:var(--muted)"></span><span class="grow"><div class="small muted">Największy wydatek</div><div class="t">${esc(r.biggest_expense.label)}</div></span><span class="amount">${fmt(r.biggest_expense.amount_grosze)}<div class="small muted">${dayLabel(r.biggest_expense.spent_on)}</div></span></a></li>` : ""}
+      ${r.top_category ? `<li><a href="#/category/${r.top_category.category_id}">${catTile(r.top_category)}<span class="grow"><div class="small muted">Najwięcej poszło na</div><div class="t">${esc(r.top_category.name)}</div></span><span class="amount">${fmt(r.top_category.total_grosze)}<div class="small muted">${Math.round((r.top_category.total_grosze / r.total_grosze) * 100)}%</div></span></a></li>` : ""}
+      ${r.biggest_category_increase ? `<li><a href="#/category/${r.biggest_category_increase.category_id}">${catTile(r.biggest_category_increase)}<span class="grow"><div class="small muted">Najbardziej wzrosło</div><div class="t">${esc(r.biggest_category_increase.name)}</div></span><span class="amount"><span class="delta up">+${fmt(r.biggest_category_increase.change_grosze)}</span></span></a></li>` : ""}
+      ${r.biggest_expense ? `<li><a href="#/expense/${r.biggest_expense.id}"><span class="cat-ic neutral">${icon("receipt")}</span><span class="grow"><div class="small muted">Największy wydatek</div><div class="t">${esc(r.biggest_expense.label)}</div></span><span class="amount">${fmt(r.biggest_expense.amount_grosze)}<div class="small muted">${dayLabel(r.biggest_expense.spent_on)}</div></span></a></li>` : ""}
     </ul></section>
     ${r.price_rises.length ? `<section class="card"><h2>Podrożało</h2><ul class="list">${priceList(r.price_rises, true)}</ul></section>` : ""}
     ${r.price_drops.length ? `<section class="card"><h2>Potaniało</h2><ul class="list">${priceList(r.price_drops, false)}</ul></section>` : ""}
@@ -902,7 +936,7 @@ async function viewReceipts() {
           .map(
             (r) => `<li><a href="#/receipt/${r.id}">
               <span class="grow"><div class="t">${esc(r.ocr_result?.merchant || "Paragon")}</div>
-              <div class="small muted">${esc(label[r.status])} · wgrany ${dayLabel(r.uploaded_at.slice(0, 10))}</div></span>
+              <div class="small muted">${r.ocr_result?.duplicate_of ? `<span class="up">możliwy duplikat</span> · ` : ""}${esc(label[r.status])} · wgrany ${dayLabel(r.uploaded_at.slice(0, 10))}</div></span>
               <span class="amount">${r.ocr_result?.total_grosze ? fmt(r.ocr_result.total_grosze) : ""}</span></a></li>`
           )
           .join("")}</ul>`
@@ -944,12 +978,14 @@ async function viewReceipt(id) {
       <button type="button" class="btn danger" id="discard">Odrzuć paragon</button>`,
     onSubmit: async (data) => {
       await api(`/api/receipts/${id}/confirm`, { method: "POST", body: data });
+      await printReceipt(data);
       toast(data.keep_photo ? "Zapisano. Zdjęcie trafiło do kaucji." : "Zapisano. Zdjęcie zostanie usunięte za 10 dni.");
       location.hash = "#/";
     },
   });
 
   $view.innerHTML =
+    (ocr.duplicate_of ? `<a class="banner dup" href="#/expense/${ocr.duplicate_of}">${icon("alert")}<span><b>Możliwy duplikat.</b> Paragon z tego sklepu, z tą datą i kwotą jest już zapisany. Sprawdź, zanim zatwierdzisz.</span><span class="chev">${icon("right")}</span></a>` : "") +
     (failed ? `<div class="banner">Nie udało się odczytać paragonu. Wpisz dane ręcznie albo spróbuj ponownie.</div>` : `<p class="small muted">Sprawdź odczytane dane i pozycje. Popraw, jeśli coś się nie zgadza.</p>`) +
     f.html +
     receiptPhotoCard(r);
@@ -988,7 +1024,7 @@ async function viewCategories() {
       .map((c) => {
         const s = byId[c.id];
         return `<li><a href="#/category/${c.id}">
-          <span class="dot" style="background:${esc(c.color)}"></span>
+          ${catTile(c)}
           <span class="grow"><div class="t">${esc(c.name)}</div><div class="small">${s ? change(s.change_percent, s.change_grosze) : `<span class="muted">brak wydatków</span>`}</div></span>
           <span class="amount">${fmt(s?.total_grosze || 0)}</span></a></li>`;
       })
@@ -1050,6 +1086,8 @@ async function viewCategory(id) {
       <div class="big" data-count="${total}" data-key="cat-${id}">${fmt(total)}</div>
       <div class="small">${prev ? change(Math.round(((total - prev) / prev) * 1000) / 10, total - prev) : ""}</div>
       <div class="small muted">Średnio miesięcznie (gdy były wydatki): ${fmt(avg)}</div>
+      ${cat.budget_grosze ? `<div class="meter ${total >= cat.budget_grosze ? "over" : total >= cat.budget_grosze * 0.8 ? "near" : "ok"}" style="margin-top:12px"><i style="--w:${Math.min(100, Math.round((total / cat.budget_grosze) * 100))}%"></i></div>
+        <div class="small muted">Budżet ${fmt(cat.budget_grosze)} · ${total >= cat.budget_grosze ? `przekroczony o ${fmt(total - cat.budget_grosze)}` : `zostało ${fmt(cat.budget_grosze - total)}`}</div>` : ""}
     </section>
     <section class="card"><h2>Ostatnie 12 miesięcy</h2><div class="chart-box bar"><canvas id="ct"></canvas></div></section>
     <section class="card"><h2>Wydatki</h2>${
@@ -1073,7 +1111,7 @@ async function viewSettings() {
         .map((r) => {
           const c = catMap[r.category_id];
           return `<li><a href="#/recurring/${r.id}">
-            <span class="dot" style="background:${esc(c?.color || "#999")}"></span>
+            ${catTile(c || { category_id: r.category_id })}
             <span class="grow"><div class="t">${esc(r.description)}</div>
               <div class="small muted">${r.active ? `co miesiąc, ${r.day_of_month}. dnia` : "wstrzymana"} · ${esc(c?.name || "")}</div></span>
             <span class="amount">${fmt(r.amount_grosze)}</span></a></li>`;
@@ -1085,8 +1123,8 @@ async function viewSettings() {
       <ul class="list">${cats
         .map(
           (c) => `<li><a href="#/edit-category/${c.id}">
-            <span class="dot" style="background:${esc(c.color)}"></span>
-            <span class="grow"><div class="t">${esc(c.name)}</div>${c.archived ? `<div class="small muted">ukryta</div>` : ""}</span>
+            ${catTile(c)}
+            <span class="grow"><div class="t">${esc(c.name)}</div>${c.budget_grosze ? `<div class="small muted">budżet ${fmt(c.budget_grosze)} / mies.</div>` : ""}${c.archived ? `<div class="small muted">ukryta</div>` : ""}</span>
             <span class="muted">›</span></a></li>`
         )
         .join("")}</ul>
@@ -1111,7 +1149,7 @@ async function viewSettings() {
 
 async function viewEditCategory(id) {
   const isNew = id === "new";
-  const cat = isNew ? { name: "", color: "#607d8b", archived: false } : await categoryById(Number(id));
+  const cat = isNew ? { name: "", color: "#607d8b", icon: "dots", archived: false } : await categoryById(Number(id));
   if (!cat) throw new Error("Nie ma takiej sekcji");
   setChrome(isNew ? "Nowa sekcja" : "Edytuj sekcję", { back: "#/settings" });
   $view.innerHTML = `<form class="card" id="cf">
@@ -1119,15 +1157,30 @@ async function viewEditCategory(id) {
       <input id="name" maxlength="80" required value="${esc(cat.name)}">
       <label for="color">Kolor</label>
       <input id="color" type="color" value="${esc(cat.color)}">
-      <p></p>
+      <label>Ikona</label>
+      <div class="icon-grid" id="icons" style="--c:${esc(cat.color)}">${CATEGORY_ICONS.map((n) => `<button type="button" class="icon-pick" data-icon="${n}" aria-pressed="${n === (cat.icon || "dots")}" aria-label="${n}">${icon(n)}</button>`).join("")}</div>
+      <label for="budget">Budżet miesięczny (zł)</label>
+      <input id="budget" inputmode="decimal" placeholder="bez limitu" value="${esc(fromGrosze(cat.budget_grosze))}">
+      <p class="small muted">Przy 80% i 100% budżetu pulpit pokaże ostrzeżenie.</p>
       <button class="btn primary">Zapisz</button>
       ${isNew ? "" : `<button type="button" class="btn" id="arch">${cat.archived ? "Przywróć sekcję" : "Ukryj sekcję"}</button>`}
     </form>
     ${isNew ? "" : `<p class="small muted">Ukryta sekcja nie pojawia się przy dodawaniu wydatków, ale jej dotychczasowe wydatki zostają w statystykach.</p>`}`;
   const form = document.getElementById("cf");
+  let iconName = cat.icon || "dots";
+  form.querySelectorAll(".icon-pick").forEach((b) => {
+    b.onclick = () => {
+      iconName = b.dataset.icon;
+      form.querySelectorAll(".icon-pick").forEach((x) => x.setAttribute("aria-pressed", x === b));
+    };
+  });
+  form.color.oninput = () => form.querySelector("#icons").style.setProperty("--c", form.color.value);
   form.onsubmit = async (ev) => {
     ev.preventDefault();
-    const body = { name: form.name.value.trim(), color: form.color.value };
+    const budgetText = form.budget.value.trim();
+    const budget = budgetText ? toGrosze(budgetText) : null;
+    if (budgetText && !budget) return toast("Wpisz budżet jako kwotę, np. 1200");
+    const body = { name: form.name.value.trim(), color: form.color.value, icon: iconName, budget_grosze: budget };
     if (!body.name) return toast("Wpisz nazwę");
     try {
       if (isNew) await api("/api/categories", { method: "POST", body: { ...body, position: (await categories()).length } });
@@ -1233,7 +1286,7 @@ function queuedRows(queued, month, categoryId, catMap) {
     .map((q) => {
       const cat = catMap[q.body.category_id];
       return `<li><a href="#/outbox">
-        <span class="dot" style="background:${esc(cat?.color || "#999")}"></span>
+        ${catTile(cat || { category_id: q.body.category_id })}
         <span class="grow"><div class="t">${esc(q.body.description || q.body.merchant || cat?.name || "Wydatek")}</div>
           <div class="small muted">${dayLabel(q.body.spent_on)} · czeka na wysłanie</div></span>
         <span class="amount">${fmt(q.body.amount_grosze)}</span></a></li>`;
@@ -1262,7 +1315,7 @@ async function viewOutbox() {
                 sub = "odczytam je po wysłaniu";
               } else {
                 const cat = catMap[q.body.category_id];
-                thumb = `<span class="dot" style="background:${esc(cat?.color || "#999")}"></span>`;
+                thumb = catTile(cat || { category_id: q.body.category_id });
                 title = q.body.description || q.body.merchant || cat?.name || "Wydatek";
                 sub = `${dayLabel(q.body.spent_on)}${cat ? " · " + cat.name : ""}`;
                 amount = fmt(q.body.amount_grosze);
@@ -1291,6 +1344,179 @@ async function viewOutbox() {
       await outboxDelete(b.dataset.del);
       updateOutboxBadge();
       viewOutbox();
+    };
+  });
+}
+
+function buzz(pattern) {
+  try {
+    if (navigator.vibrate) navigator.vibrate(pattern);
+  } catch {}
+}
+
+function printReceipt(data) {
+  buzz([12, 50, 12]);
+  if (reduceMotion) return Promise.resolve();
+  const items = (data.items || []).slice(0, 4);
+  const el = document.createElement("div");
+  el.className = "printer";
+  el.innerHTML = `<div class="printer-slot"></div><div class="printer-mouth"><div class="printer-paper">
+      <div class="pp-head">${esc(data.merchant || data.description || "PixBill")}</div>
+      <div class="pp-sub">${esc(new Date((data.spent_on || today()) + "T12:00:00").toLocaleDateString("pl-PL"))}</div>
+      ${items.map((i) => `<div class="pp-row"><span>${esc(i.name)}</span><span>${fromGrosze(i.price_grosze)}</span></div>`).join("")}
+      ${(data.items || []).length > 4 ? `<div class="pp-row muted"><span>…</span><span></span></div>` : ""}
+      <div class="pp-total"><span>SUMA PLN</span><span>${fromGrosze(data.amount_grosze)}</span></div>
+      <div class="pp-ok">${icon("check")} Zapisano</div>
+    </div></div>`;
+  document.body.append(el);
+  return new Promise((resolve) => {
+    setTimeout(() => el.classList.add("out"), 1150);
+    setTimeout(() => (el.remove(), resolve()), 1450);
+  });
+}
+
+let swipeOpen = null;
+function closeSwipe() {
+  if (swipeOpen) swipeOpen.classList.remove("armed"), swipeOpen.style.removeProperty("--dx");
+  swipeOpen = null;
+}
+
+function initGestures() {
+  let start = null;
+  $view.addEventListener(
+    "touchstart",
+    (ev) => {
+      if (ev.touches.length !== 1) return (start = null);
+      const t = ev.touches[0];
+      const row = ev.target.closest("li.swipe");
+      const blocked = ev.target.closest("canvas, input, textarea, .chips, .cal, .item-rows, .icon-grid");
+      start = { x: t.clientX, y: t.clientY, row, blocked, dir: null, dx: 0 };
+      if (swipeOpen && swipeOpen !== row) closeSwipe();
+    },
+    { passive: true }
+  );
+  $view.addEventListener(
+    "touchmove",
+    (ev) => {
+      if (!start) return;
+      const t = ev.touches[0];
+      const dx = t.clientX - start.x, dy = t.clientY - start.y;
+      if (!start.dir && Math.hypot(dx, dy) > 10) start.dir = Math.abs(dx) > Math.abs(dy) * 1.4 ? "h" : "v";
+      start.dx = dx;
+      if (start.dir === "h" && start.row) {
+        const base = start.row.classList.contains("armed") ? -88 : 0;
+        start.row.style.setProperty("--dx", `${Math.max(-120, Math.min(0, base + dx))}px`);
+        start.row.classList.add("dragging");
+      }
+    },
+    { passive: true }
+  );
+  $view.addEventListener("touchend", () => {
+    if (!start || start.dir !== "h") return (start = null);
+    const { row, dx, blocked } = start;
+    start = null;
+    if (row) {
+      row.classList.remove("dragging");
+      row.addEventListener("click", (e) => e.preventDefault(), { once: true, capture: true });
+      if (dx < -50 || (row.classList.contains("armed") && dx < 30)) {
+        row.classList.add("armed");
+        row.style.setProperty("--dx", "-88px");
+        swipeOpen = row;
+        buzz(8);
+      } else {
+        closeSwipe();
+        row.classList.remove("armed");
+        row.style.removeProperty("--dx");
+      }
+      return;
+    }
+    if (blocked || Math.abs(dx) < 70) return;
+    const sw = $view.querySelector(".month-switch");
+    if (!sw) return;
+    const btn = dx > 0 ? sw.children[0] : sw.children[2];
+    if (!btn.disabled) btn.click();
+  });
+  $view.addEventListener("click", async (ev) => {
+    const del = ev.target.closest(".swipe-del");
+    if (!del) return;
+    ev.preventDefault();
+    const row = del.closest("li.swipe");
+    try {
+      await api(`/api/expenses/${row.dataset.expense}`, { method: "DELETE" });
+    } catch (err) {
+      return toast(err.message);
+    }
+    buzz(20);
+    swipeOpen = null;
+    row.style.height = row.offsetHeight + "px";
+    requestAnimationFrame(() => row.classList.add("gone"));
+    setTimeout(() => row.remove(), 320);
+    toast(`Usunięto wydatek ${fmt(Number(row.dataset.amount))}`);
+  });
+}
+
+function budgetRows(cats, summary) {
+  const spent = Object.fromEntries(summary.categories.map((c) => [c.category_id, c.total_grosze]));
+  return cats
+    .filter((c) => c.budget_grosze && !c.archived)
+    .map((c) => ({ cat: c, spent: spent[c.id] || 0, pct: Math.round(((spent[c.id] || 0) / c.budget_grosze) * 100) }))
+    .sort((a, b) => b.pct - a.pct);
+}
+
+function budgetCard(cats, summary) {
+  const rows = budgetRows(cats, summary);
+  if (!rows.length) return "";
+  const level = (pct) => (pct >= 100 ? "over" : pct >= 80 ? "near" : "ok");
+  const alerts = rows.filter((r) => r.pct >= 80);
+  return `${alerts.length ? `<div class="banner budget-alert ${alerts.some((r) => r.pct >= 100) ? "over" : ""}">${icon("alert")}<span>${alerts
+      .map((r) => `${esc(r.cat.name)}: ${r.pct >= 100 ? `budżet przekroczony o ${fmt(r.spent - r.cat.budget_grosze)}` : `${r.pct}% budżetu`}`)
+      .join(" · ")}</span></div>` : ""}
+    <section class="card"><h2>Budżety</h2><ul class="list budgets">${rows
+      .map(
+        (r) => `<li><a href="#/category/${r.cat.id}">${catTile(r.cat)}<span class="grow">
+          <div class="budget-top"><span class="t">${esc(r.cat.name)}</span><span class="num small">${fmt(r.spent)} <span class="muted">/ ${fmt(r.cat.budget_grosze)}</span></span></div>
+          <div class="meter ${level(r.pct)}"><i style="--w:${Math.min(100, r.pct)}%"></i></div>
+          <div class="small ${r.pct >= 100 ? "up" : "muted"}">${r.pct >= 100 ? `ponad limit o ${fmt(r.spent - r.cat.budget_grosze)}` : `zostało ${fmt(r.cat.budget_grosze - r.spent)} · ${r.pct}%`}</div>
+        </span></a></li>`
+      )
+      .join("")}</ul></section>`;
+}
+
+const WEEKDAYS = ["pn", "wt", "śr", "cz", "pt", "sb", "nd"];
+
+function calendarCard(month, expenses) {
+  const [y, m] = month.split("-").map(Number);
+  const days = new Date(y, m, 0).getDate();
+  const offset = (new Date(y, m - 1, 1).getDay() + 6) % 7;
+  const totals = {};
+  for (const e of expenses) totals[Number(e.spent_on.slice(8))] = (totals[Number(e.spent_on.slice(8))] || 0) + e.amount_grosze;
+  const max = Math.max(1, ...Object.values(totals));
+  const todayNum = month === thisMonth() ? Number(today().slice(8)) : 0;
+  let cells = WEEKDAYS.map((d) => `<span class="cal-head">${d}</span>`).join("") + "<span></span>".repeat(offset);
+  for (let d = 1; d <= days; d++) {
+    const t = totals[d] || 0;
+    const level = t ? Math.max(1, Math.ceil((t / max) * 4)) : 0;
+    cells += `<button style="--d:${d}" class="cal-day l${level}${d === todayNum ? " today" : ""}${todayNum && d > todayNum ? " future" : ""}" data-day="${d}" ${t ? "" : "disabled"} aria-label="${d}: ${fmt(t)}">${d}</button>`;
+  }
+  return `<section class="card"><h2>Kalendarz wydatków</h2>
+    <div class="cal">${cells}</div>
+    <div class="cal-legend small muted"><span>mniej</span><i class="l1"></i><i class="l2"></i><i class="l3"></i><i class="l4"></i><span>więcej</span></div>
+    <div id="cal-day"></div></section>`;
+}
+
+function bindCalendar(month, expenses, catMap) {
+  const box = document.getElementById("cal-day");
+  if (!box) return;
+  document.querySelectorAll(".cal-day").forEach((b) => {
+    b.onclick = () => {
+      const was = b.classList.contains("sel");
+      document.querySelectorAll(".cal-day.sel").forEach((x) => x.classList.remove("sel"));
+      if (was) return (box.innerHTML = "");
+      b.classList.add("sel");
+      const day = `${month}-${String(b.dataset.day).padStart(2, "0")}`;
+      const list = expenses.filter((e) => e.spent_on === day);
+      box.innerHTML = `<div class="cal-detail"><div class="small muted">${new Date(day + "T12:00:00").toLocaleDateString("pl-PL", { weekday: "long", day: "numeric", month: "long" })} · ${fmt(list.reduce((s, e) => s + e.amount_grosze, 0))}</div>
+        <ul class="list">${list.map((e) => expenseRow(e, catMap[e.category_id])).join("")}</ul></div>`;
     };
   });
 }
@@ -1360,7 +1586,7 @@ async function viewSearch() {
                   const label = e.description || e.merchant || cat?.name || "Wydatek";
                   const sub = [new Date(e.spent_on + "T12:00:00").toLocaleDateString("pl-PL", { day: "numeric", month: "short", year: "numeric" }), e.description && e.merchant ? e.merchant : null, cat?.name].filter(Boolean).join(" · ");
                   return `<li><a href="#/expense/${e.id}">
-                    <span class="dot" style="background:${esc(cat?.color || "#999")}"></span>
+                    ${catTile(cat || { category_id: e.category_id })}
                     <span class="grow"><div class="t">${highlight(label, words)}</div><div class="small muted">${highlight(sub, words)}</div>
                       ${hits.length ? `<div class="small hits">${hits.slice(0, 3).map((i) => `${highlight(i.name, words)} <span class="num">${fmt(i.price_grosze)}</span>`).join(" · ")}</div>` : ""}</span>
                     <span class="amount">${fmt(e.amount_grosze)}</span></a></li>`;
@@ -1547,6 +1773,7 @@ function navDirection(from, to) {
 
 async function route() {
   clearTimeout(pollTimer);
+  swipeOpen = null;
   destroyCharts();
   const hash = location.hash || "#/";
   for (const [pattern, view, tab] of routes) {
@@ -1568,6 +1795,7 @@ async function route() {
 }
 
 window.addEventListener("hashchange", route);
+initGestures();
 route();
 syncOutbox();
 

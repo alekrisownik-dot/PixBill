@@ -1,5 +1,7 @@
 # PixBill
 
+[![Testy](https://github.com/alekrisownik-dot/PixBill/actions/workflows/tests.yml/badge.svg)](https://github.com/alekrisownik-dot/PixBill/actions/workflows/tests.yml)
+
 Domowa aplikacja do zliczania miesięcznych wydatków ze zdjęć paragonów i ręcznych wpisów.
 Działa na własnym serwerze, paragony odczytuje lokalny model w Ollamie, a dostęp jest wyłącznie przez Tailscale.
 
@@ -14,6 +16,11 @@ Działa na własnym serwerze, paragony odczytuje lokalny model w Ollamie, a dost
 - **Pozycje i ceny produktów.** Widać, ile wydajesz na konkretne produkty i jak zmieniała się ich cena między zakupami.
 - **Wykresy i porównania.** Podział miesiąca na sekcje, zmiana względem poprzedniego miesiąca i trend z ostatnich 12 miesięcy.
 - **Własne sekcje i opłaty stałe.** Czynsz albo internet dodajesz raz, a aplikacja co miesiąc sama dopisuje je do wydatków.
+- **Budżety.** Limit na sekcję z paskiem postępu i ostrzeżeniem przy 80% i 100%.
+- **Kalendarz wydatków.** Siatka dni miesiąca pokazuje, kiedy wydajesz najwięcej.
+- **Podsumowanie miesiąca.** Suma, porównanie, największy wydatek oraz produkty, które podrożały i potaniały.
+- **Paragony z kaucją.** Ich zdjęcia nie kasują się same, dopóki ich nie usuniesz.
+- **Wykrywanie duplikatów.** Ostrzega, gdy ten sam paragon trafi drugi raz.
 - **Wyszukiwarka.** Szuka w sklepach, opisach i produktach ze wszystkich miesięcy, także bez polskich znaków.
 - **Eksport do Excela.** Plik .xlsx z dwoma arkuszami: wydatki i pozycje z paragonów.
 - **Działa bez połączenia.** Wydatki i zdjęcia zapisane offline wysyłają się same, gdy telefon znów połączy się z serwerem.

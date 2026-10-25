@@ -6,16 +6,18 @@ from pydantic import BaseModel, ConfigDict, Field
 class CategoryIn(BaseModel):
     name: str = Field(min_length=1, max_length=80)
     color: str = Field(default="#9e9e9e", pattern=r"^#[0-9a-fA-F]{6}$")
-    icon: str = "dots"
+    icon: str = Field(default="dots", max_length=40)
     position: int = 0
+    budget_grosze: int | None = Field(default=None, gt=0)
 
 
 class CategoryUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=80)
     color: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
-    icon: str | None = None
+    icon: str | None = Field(default=None, max_length=40)
     position: int | None = None
     archived: bool | None = None
+    budget_grosze: int | None = Field(default=None, gt=0)
 
 
 class CategoryOut(BaseModel):
@@ -27,6 +29,7 @@ class CategoryOut(BaseModel):
     icon: str
     position: int
     archived: bool
+    budget_grosze: int | None = None
 
 
 class ItemIn(BaseModel):

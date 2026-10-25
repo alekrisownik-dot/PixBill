@@ -19,6 +19,7 @@ class Category(Base):
     icon: Mapped[str] = mapped_column(String(40), default="dots")
     position: Mapped[int] = mapped_column(Integer, default=0)
     archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    budget_grosze: Mapped[int | None] = mapped_column(Integer)
 
 
 class Receipt(Base):

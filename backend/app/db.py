@@ -81,6 +81,7 @@ NEW_COLUMNS = [
     ("expenses", "client_id", "VARCHAR(64)", True),
     ("receipts", "client_id", "VARCHAR(64)", True),
     ("receipts", "keep_photo", "BOOLEAN NOT NULL DEFAULT 0", False),
+    ("categories", "budget_grosze", "INTEGER", False),
 ]
 
 

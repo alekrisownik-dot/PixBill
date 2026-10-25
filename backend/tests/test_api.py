@@ -293,3 +293,26 @@ def test_month_report(client):
     assert r["biggest_expense"]["amount_grosze"] == 20000
     assert [(p["name"], p["previous_grosze"], p["current_grosze"]) for p in r["price_rises"]] == [("Masło", 699, 799)]
     assert [p["name"] for p in r["price_drops"]] == ["Kawa"]
+
+
+def test_category_budget(client):
+    cat = first_category(client)
+    r = client.patch(f"/api/categories/{cat}", json={"budget_grosze": 120000, "icon": "cart"})
+    assert r.json()["budget_grosze"] == 120000 and r.json()["icon"] == "cart"
+    assert client.patch(f"/api/categories/{cat}", json={"budget_grosze": 0}).status_code == 422
+    assert client.patch(f"/api/categories/{cat}", json={"budget_grosze": None}).json()["budget_grosze"] is None
+
+
+def test_duplicate_receipt_detected(client, monkeypatch):
+    monkeypatch.setattr(
+        ollama, "read_receipt",
+        lambda path: ({"merchant": "ŻABKA", "date": "2026-10-20", "total_grosze": 2599, "items": []}, ""),
+    )
+    first = client.post("/api/receipts", files={"file": ("p.jpg", jpeg_bytes(), "image/jpeg")}).json()["id"]
+    assert client.get(f"/api/receipts/{first}").json()["ocr_result"]["duplicate_of"] is None
+    expense = client.post(
+        f"/api/receipts/{first}/confirm",
+        json={"amount_grosze": 2599, "spent_on": "2026-10-20", "category_id": first_category(client), "merchant": "Żabka"},
+    ).json()
+    second = client.post("/api/receipts", files={"file": ("p.jpg", jpeg_bytes(), "image/jpeg")}).json()["id"]
+    assert client.get(f"/api/receipts/{second}").json()["ocr_result"]["duplicate_of"] == expense["id"]

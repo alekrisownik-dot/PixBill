@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from ..cleanup import photo_delete_after
 from ..config import get_settings
 from ..db import get_db, new_session
-from ..items import set_items
+from ..items import fold, set_items
 from ..models import Category, Expense, Receipt
 from ..ocr import ollama
 from ..schemas import ExpenseOut, ItemIn, ReceiptOut, ReceiptUpdate
@@ -62,6 +62,22 @@ def suggest_category(db: Session, merchant: str | None) -> int | None:
     )
 
 
+def find_duplicate(db: Session, result: dict) -> int | None:
+    if not result.get("total_grosze") or not result.get("date"):
+        return None
+    candidates = db.scalars(
+        select(Expense).where(
+            Expense.amount_grosze == result["total_grosze"],
+            Expense.spent_on == date.fromisoformat(result["date"]),
+        )
+    ).all()
+    merchant = fold(result.get("merchant") or "")
+    for expense in candidates:
+        if not merchant or not expense.merchant or fold(expense.merchant) == merchant:
+            return expense.id
+    return None
+
+
 def run_ocr(receipt_id: int) -> None:
     with new_session() as db:
         receipt = db.get(Receipt, receipt_id)
@@ -76,6 +92,7 @@ def run_ocr(receipt_id: int) -> None:
             receipt.ocr_error = str(exc)
         else:
             result["suggested_category_id"] = suggest_category(db, result.get("merchant"))
+            result["duplicate_of"] = find_duplicate(db, result)
             receipt.status = "processed"
             receipt.ocr_result = result
             receipt.ocr_raw = raw
