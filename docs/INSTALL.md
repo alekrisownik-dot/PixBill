@@ -35,7 +35,7 @@ sudo systemctl restart docker
 ```bash
 git clone <adres-repozytorium> pixbill && cd pixbill
 cp .env.example .env
-nano .env                          # ustaw hasło i PIXBILL_SECRET_KEY (openssl rand -hex 32)
+nano .env                          # ustaw PIXBILL_PASSWORD, klucz sesji wygeneruje się sam
 docker compose up -d --build
 ./scripts/pull-model.sh            # pobiera model do odczytu paragonów (ok. 3 GB, raz)
 curl http://127.0.0.1:8000/api/health
