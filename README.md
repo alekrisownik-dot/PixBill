@@ -74,4 +74,6 @@ PIXBILL_DATA_DIR=../data uvicorn app.main:app --reload
 | `PIXBILL_PASSWORD` | `zmien-mnie` | Hasło do aplikacji |
 | `PIXBILL_SECRET_KEY` | | Sekret sesji; gdy pusty, aplikacja sama tworzy losowy w `data/secret_key` |
 | `PIXBILL_OLLAMA_MODEL` | `qwen2.5vl:3b` | Model do odczytu paragonów, np. `gemma3:4b` |
+| `PIXBILL_OLLAMA_TIMEOUT_SECONDS` | `900` | Ile sekund czekać na odczyt jednego paragonu |
+| `PIXBILL_OCR_MAX_SIDE` | `1280` | Dłuższy bok zdjęcia wysyłanego do modelu; mniej to szybciej |
 | `PIXBILL_PHOTO_RETENTION_DAYS` | `10` | Po ilu dniach od zatwierdzenia kasować zdjęcie |

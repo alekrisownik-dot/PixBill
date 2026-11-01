@@ -13,7 +13,11 @@ class Settings(BaseSettings):
     secret_key: str = ""
     ollama_url: str = "http://localhost:11434"
     ollama_model: str = "qwen2.5vl:3b"
-    ollama_timeout_seconds: float = 300
+    ollama_timeout_seconds: float = 900
+    ollama_num_ctx: int = 8192
+    ollama_num_predict: int = 1536
+    ollama_keep_alive: str = "30m"
+    ocr_max_side: int = 1280
     photo_retention_days: int = 10
     cleanup_interval_seconds: int = 3600
 

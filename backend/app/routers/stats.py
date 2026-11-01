@@ -1,4 +1,5 @@
 from datetime import date
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
@@ -11,7 +12,7 @@ from ..util import month_range, shift_month
 
 router = APIRouter(prefix="/api/stats", tags=["stats"])
 
-MONTH = Query(default=None, pattern=r"^\d{4}-\d{2}$")
+Month = Annotated[str | None, Query(pattern=r"^\d{4}-\d{2}$")]
 
 
 def current_month() -> str:
@@ -37,7 +38,7 @@ def percent(current: int, previous: int) -> float | None:
 
 
 @router.get("/month", response_model=MonthSummary)
-def month_summary(month: str | None = MONTH, db: Session = Depends(get_db)):
+def month_summary(month: Month = None, db: Session = Depends(get_db)):
     month = month or current_month()
     previous = shift_month(month, -1)
     now_totals = totals_by_category(db, month)
@@ -78,7 +79,7 @@ def month_summary(month: str | None = MONTH, db: Session = Depends(get_db)):
 @router.get("/trend", response_model=list[TrendPoint])
 def trend(
     months: int = Query(default=12, ge=1, le=60),
-    until: str | None = MONTH,
+    until: Month = None,
     category_id: int | None = None,
     db: Session = Depends(get_db),
 ):
@@ -105,7 +106,7 @@ def last_prices(db: Session, before: date, since: date | None = None) -> dict[st
 
 
 @router.get("/report", response_model=MonthReport)
-def month_report(month: str | None = MONTH, db: Session = Depends(get_db)):
+def month_report(month: Month = None, db: Session = Depends(get_db)):
     month = month or shift_month(current_month(), -1)
     summary = month_summary(month, db)
     start, end = month_range(month)

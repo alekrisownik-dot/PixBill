@@ -316,3 +316,28 @@ def test_duplicate_receipt_detected(client, monkeypatch):
     ).json()
     second = client.post("/api/receipts", files={"file": ("p.jpg", jpeg_bytes(), "image/jpeg")}).json()["id"]
     assert client.get(f"/api/receipts/{second}").json()["ocr_result"]["duplicate_of"] == expense["id"]
+
+
+def test_ocr_request_limits_output(monkeypatch, tmp_path):
+    photo = tmp_path / "p.jpg"
+    photo.write_bytes(jpeg_bytes())
+    sent = {}
+
+    class Reply:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"response": '{"merchant": "Lidl", "date": "2026-10-01", "total": "5,00", "items": [{"name": "Chleb", "price": 5}]}'}
+
+    def fake_post(url, json, timeout):
+        sent.update(json)
+        return Reply()
+
+    monkeypatch.setattr(ollama.httpx, "post", fake_post)
+    result, raw = ollama.read_receipt(photo)
+    assert result["total_grosze"] == 500
+    assert "raw_text" not in sent["prompt"]
+    assert sent["options"]["num_ctx"] >= 8192
+    assert sent["options"]["num_predict"] > 0
+    assert "Chleb 5.00" in raw

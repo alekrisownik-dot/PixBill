@@ -16,15 +16,12 @@ Odczytaj zdjęcie paragonu i zwróć WYŁĄCZNIE JSON w formacie:
   "merchant": "nazwa sklepu lub null",
   "date": "RRRR-MM-DD lub null",
   "total": "suma do zapłaty jako liczba z kropką, np. 123.45, lub null",
-  "items": [{"name": "nazwa pozycji", "price": 12.34}],
-  "raw_text": "cały odczytany tekst paragonu"
+  "items": [{"name": "nazwa pozycji", "price": 12.34}]
 }
 W "items" wpisz każdą kupioną pozycję po kolei: nazwę tak jak na paragonie i cenę za cały wiersz
 (np. "2 x 3,49 6,98" daje cenę 6.98). Pomiń literę stawki VAT po cenie. Rabat lub upust wpisz
 jako osobną pozycję z ujemną ceną. Kaucję za butelki lub puszki wpisz jako osobną pozycję z nazwą zawierającą słowo "kaucja". Nie wpisuj do "items" sumy, podatku PTU ani reszty.
 Suma to zwykle wiersz "SUMA PLN". Nie zgaduj: jeśli czegoś nie widać, wpisz null."""
-
-MAX_SIDE = 1600
 
 register_heif_opener()
 
@@ -33,10 +30,10 @@ class OcrError(Exception):
     pass
 
 
-def prepare_image(path: Path) -> bytes:
+def prepare_image(path: Path, max_side: int) -> bytes:
     with Image.open(path) as img:
         img = ImageOps.exif_transpose(img).convert("RGB")
-        img.thumbnail((MAX_SIDE, MAX_SIDE))
+        img.thumbnail((max_side, max_side))
         buf = io.BytesIO()
         img.save(buf, format="JPEG", quality=90)
         return buf.getvalue()
@@ -71,7 +68,7 @@ def normalize(result: dict) -> dict:
 
 def read_receipt(path: Path) -> tuple[dict, str]:
     settings = get_settings()
-    image_b64 = base64.b64encode(prepare_image(path)).decode()
+    image_b64 = base64.b64encode(prepare_image(path, settings.ocr_max_side)).decode()
     try:
         response = httpx.post(
             f"{settings.ollama_url}/api/generate",
@@ -81,7 +78,12 @@ def read_receipt(path: Path) -> tuple[dict, str]:
                 "images": [image_b64],
                 "format": "json",
                 "stream": False,
-                "options": {"temperature": 0},
+                "keep_alive": settings.ollama_keep_alive,
+                "options": {
+                    "temperature": 0,
+                    "num_ctx": settings.ollama_num_ctx,
+                    "num_predict": settings.ollama_num_predict,
+                },
             },
             timeout=settings.ollama_timeout_seconds,
         )
@@ -94,4 +96,15 @@ def read_receipt(path: Path) -> tuple[dict, str]:
         result = json.loads(text)
     except json.JSONDecodeError as exc:
         raise OcrError(f"Model nie zwrócił poprawnego JSON: {text[:200]}") from exc
-    return normalize(result), str(result.get("raw_text") or "")
+    data = normalize(result)
+    return data, raw_text(data)
+
+
+def raw_text(data: dict) -> str:
+    lines = [data["merchant"] or "", data["date"] or ""]
+    for item in data["items"]:
+        price = item["price_grosze"]
+        lines.append(f"{item['name']} {price / 100:.2f}" if price is not None else item["name"])
+    if data["total_grosze"] is not None:
+        lines.append(f"SUMA {data['total_grosze'] / 100:.2f}")
+    return "\n".join(line for line in lines if line)
