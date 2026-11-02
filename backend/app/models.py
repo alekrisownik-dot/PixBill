@@ -78,6 +78,7 @@ class ExpenseItem(Base):
     name: Mapped[str] = mapped_column(String(200))
     product_key: Mapped[str] = mapped_column(String(200), index=True)
     price_grosze: Mapped[int] = mapped_column(Integer)
+    category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id"))
 
     expense: Mapped[Expense] = relationship(back_populates="items")
 

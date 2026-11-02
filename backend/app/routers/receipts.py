@@ -5,9 +5,10 @@ from datetime import date, datetime, timezone
 from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .. import categorize
 from ..cleanup import photo_delete_after
 from ..config import get_settings
 from ..db import get_db, new_session
@@ -52,17 +53,6 @@ def to_out(receipt: Receipt) -> ReceiptOut:
     )
 
 
-def suggest_category(db: Session, merchant: str | None) -> int | None:
-    if not merchant:
-        return None
-    return db.scalar(
-        select(Expense.category_id)
-        .where(func.lower(Expense.merchant) == merchant.strip().lower())
-        .order_by(Expense.spent_on.desc(), Expense.id.desc())
-        .limit(1)
-    )
-
-
 def find_duplicate(db: Session, result: dict) -> int | None:
     if not result.get("total_grosze") or not result.get("date"):
         return None
@@ -104,7 +94,7 @@ def run_ocr(receipt_id: int) -> None:
             receipt.status = "failed"
             receipt.ocr_error = str(exc)
         else:
-            result["suggested_category_id"] = suggest_category(db, result.get("merchant"))
+            categorize.assign(db, result)
             result["duplicate_of"] = find_duplicate(db, result)
             receipt.status = "processed"
             receipt.ocr_result = result

@@ -35,6 +35,7 @@ class CategoryOut(BaseModel):
 class ItemIn(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     price_grosze: int
+    category_id: int | None = None
 
 
 class ItemOut(BaseModel):
@@ -44,6 +45,7 @@ class ItemOut(BaseModel):
     name: str
     product_key: str
     price_grosze: int
+    category_id: int | None = None
 
 
 class ExpenseIn(BaseModel):

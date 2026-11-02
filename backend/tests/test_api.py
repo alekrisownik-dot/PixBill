@@ -489,3 +489,22 @@ def test_photo_read_by_tesseract_first(client, monkeypatch):
         ("Bulki pszenne", 316),
         ("Pomidory", 511),
     ]
+
+
+def test_receipt_items_get_sections(client, monkeypatch):
+    from app.ocr import tesseract
+
+    cats = {c["name"]: c["id"] for c in client.get("/api/categories").json()}
+    text = "\n".join([
+        "Biedronka",
+        "05.11.2026",
+        "Znicz szklany A 4.000 x 9,99 39,96",
+        "Rabat -10,00",
+        "Mleko UHT 3,2% C 2.000 x 2,49 4,98",
+        "Suma PLN 34,94",
+    ])
+    monkeypatch.setattr(tesseract, "read_text", lambda path: text)
+    r = client.post("/api/receipts", files={"file": ("p.jpg", jpeg_bytes(), "image/jpeg")})
+    result = client.get(f"/api/receipts/{r.json()['id']}").json()["ocr_result"]
+    assert [i["category_id"] for i in result["items"]] == [cats["Chemia i dom"], cats["Chemia i dom"], cats["Spożywcze"]]
+    assert result["suggested_category_id"] == cats["Chemia i dom"]

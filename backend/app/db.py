@@ -83,6 +83,7 @@ NEW_COLUMNS = [
     ("receipts", "keep_photo", "BOOLEAN NOT NULL DEFAULT 0", False),
     ("categories", "budget_grosze", "INTEGER", False),
     ("receipts", "pdf_text", "TEXT", False),
+    ("expense_items", "category_id", "INTEGER REFERENCES categories(id)", False),
 ]
 
 

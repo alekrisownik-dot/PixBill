@@ -19,7 +19,13 @@ def product_key(name: str) -> str:
 
 def set_items(expense: Expense, items) -> None:
     expense.items = [
-        ExpenseItem(position=i, name=item.name.strip(), product_key=product_key(item.name), price_grosze=item.price_grosze)
+        ExpenseItem(
+            position=i,
+            name=item.name.strip(),
+            product_key=product_key(item.name),
+            price_grosze=item.price_grosze,
+            category_id=getattr(item, "category_id", None),
+        )
         for i, item in enumerate(items)
         if item.name.strip()
     ]
