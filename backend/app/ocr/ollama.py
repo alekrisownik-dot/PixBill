@@ -72,19 +72,52 @@ def parse_amount(value) -> int | None:
     return round(float(match.group().replace(",", ".")) * 100)
 
 
+QTY_PRICE = re.compile(r"\s*(\d+(?:[.,]\d+)?)\s*(?:szt\.?|kg)?\s*[x×*]\s*(\d+[.,]\d{2})\b.*$", re.IGNORECASE)
+NOT_ITEM = re.compile(r"^\s*(suma|razem|do zap[łl]aty|ptu|sprzeda[żz] opodatk|reszta|got[óo]wka|karta)\b", re.IGNORECASE)
+DISCOUNT_NAME = re.compile(r"^\s*(rabat|upust|obni[żz]ka|promocja|zni[żz]ka|opust)\b", re.IGNORECASE)
+TRAILING_WORDS = re.compile(r"(\s+(rabat|upust|promocja))+\s*$", re.IGNORECASE)
+
+
+def split_quantity(name: str) -> tuple[str, int | None]:
+    match = QTY_PRICE.search(name)
+    if not match or match.start() == 0:
+        return name, None
+    qty = float(match.group(1).replace(",", "."))
+    unit = float(match.group(2).replace(",", "."))
+    clean = TRAILING_WORDS.sub("", name[: match.start()]).strip(" .:-")
+    return clean or name, round(qty * unit * 100)
+
+
+def reconcile(items: list[dict], total: int | None) -> list[dict]:
+    computed = [i for i in items if i.pop("from_quantity", False)]
+    if total is None or len(computed) * 2 < len(items):
+        return items
+    products = [i for i in items if not DISCOUNT_NAME.match(i["name"]) and (i["price_grosze"] or 0) > 0]
+    difference = total - sum(i["price_grosze"] for i in products)
+    if difference < 0 and -difference <= total:
+        products.append({"name": "Rabaty", "price_grosze": difference})
+    return products
+
+
 def normalize(result: dict) -> dict:
     items = []
     for item in result.get("items") or []:
-        if isinstance(item, dict) and item.get("name"):
-            items.append({"name": str(item["name"]), "price_grosze": parse_amount(item.get("price"))})
+        if not (isinstance(item, dict) and item.get("name")) or NOT_ITEM.match(str(item["name"])):
+            continue
+        name, price = split_quantity(str(item["name"]))
+        entry = {"name": name, "price_grosze": price if price is not None else parse_amount(item.get("price"))}
+        if price is not None:
+            entry["from_quantity"] = True
+        items.append(entry)
     date = result.get("date")
     if not (isinstance(date, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", date)):
         date = None
+    total = parse_amount(result.get("total"))
     return {
         "merchant": result.get("merchant") or None,
         "date": date,
-        "total_grosze": parse_amount(result.get("total")),
-        "items": items,
+        "total_grosze": total,
+        "items": reconcile(items, total),
     }
 
 

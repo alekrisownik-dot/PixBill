@@ -431,3 +431,21 @@ def test_ocr_salvages_looping_output():
     assert (result["merchant"], result["date"], result["total_grosze"]) == ("Biedronka", "2026-10-29", 20100)
     assert [(i["name"], i["price_grosze"]) for i in result["items"]] == [("Chleb", 499), ("Napój Cola 2l", 1095)]
     assert ollama.salvage("zupełnie nie json") is None
+
+
+def test_ocr_prices_from_quantity_lines():
+    result = ollama.normalize({
+        "merchant": "Biedronka",
+        "date": "2026-10-29",
+        "total": "30.00",
+        "items": [
+            {"name": "Mleko UHT 3,2 1l 12.000 x 2,49 Rabat", "price": -6},
+            {"name": "Cukinia luz 0.870 x 7.99", "price": -1.5},
+            {"name": "Suma PLN 30.00", "price": 30},
+        ],
+    })
+    assert [(i["name"], i["price_grosze"]) for i in result["items"]] == [
+        ("Mleko UHT 3,2 1l", 2988),
+        ("Cukinia luz", 695),
+        ("Rabaty", -683),
+    ]
