@@ -449,3 +449,12 @@ def test_ocr_prices_from_quantity_lines():
         ("Cukinia luz", 695),
         ("Rabaty", -683),
     ]
+
+
+def test_ocr_cuts_repeating_block():
+    block = [{"name": "Papryka", "price": 12.32}, {"name": "Winogrono", "price": 3.98}, {"name": "Awokado", "price": 23.96}]
+    items = [{"name": "Cukinia", "price": 6.95}] + block * 6 + block[:2]
+    result = ollama.normalize({"merchant": None, "date": None, "total": None, "items": items})
+    assert [i["name"] for i in result["items"]] == ["Cukinia", "Papryka", "Winogrono", "Awokado"]
+    pair = [{"name": "Bułka", "price": 1.25}, {"name": "Bułka", "price": 1.25}]
+    assert len(ollama.normalize({"items": pair})["items"]) == 2

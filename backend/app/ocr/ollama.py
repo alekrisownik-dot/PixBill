@@ -41,7 +41,8 @@ SCHEMA = {
     },
     "required": ["merchant", "date", "total", "items"],
 }
-LOOP_RUN = 4
+LOOP_SIZE = 4
+LOOP_REPEATS = 3
 
 register_heif_opener()
 
@@ -101,7 +102,7 @@ def reconcile(items: list[dict], total: int | None) -> list[dict]:
 
 def normalize(result: dict) -> dict:
     items = []
-    for item in result.get("items") or []:
+    for item in drop_loop([i for i in result.get("items") or [] if isinstance(i, dict)]):
         if not (isinstance(item, dict) and item.get("name")) or NOT_ITEM.match(str(item["name"])):
             continue
         name, price = split_quantity(str(item["name"]))
@@ -165,11 +166,14 @@ def field(text: str, name: str) -> str | None:
 
 
 def drop_loop(items: list[dict]) -> list[dict]:
-    run = 1
-    for index in range(1, len(items)):
-        run = run + 1 if items[index] == items[index - 1] else 1
-        if run == LOOP_RUN:
-            return items[: index - LOOP_RUN + 2]
+    for start in range(len(items)):
+        for size in range(1, LOOP_SIZE + 1):
+            block = items[start : start + size]
+            repeats = 1
+            while items[start + repeats * size : start + (repeats + 1) * size] == block:
+                repeats += 1
+            if len(block) == size and repeats >= LOOP_REPEATS:
+                return items[: start + size]
     return items
 
 
@@ -178,7 +182,7 @@ def salvage(text: str) -> dict | None:
         json.loads(chunk)
         for chunk in re.findall(r'\{\s*"name"\s*:\s*"[^"]*"\s*,\s*"price"\s*:\s*(?:"[^"]*"|-?\d+(?:\.\d+)?|null)\s*\}', text)
     ]
-    result = {"merchant": field(text, "merchant"), "date": field(text, "date"), "total": field(text, "total"), "items": drop_loop(items)}
+    result = {"merchant": field(text, "merchant"), "date": field(text, "date"), "total": field(text, "total"), "items": items}
     if result["total"] is None and not result["items"]:
         return None
     return result
