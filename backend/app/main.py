@@ -35,6 +35,14 @@ app.add_middleware(
 )
 
 
+@app.middleware("http")
+async def revalidate_static(request: Request, call_next):
+    response = await call_next(request)
+    if not request.url.path.startswith(("/api/", "/fonts/", "/vendor/")):
+        response.headers.setdefault("Cache-Control", "no-cache")
+    return response
+
+
 @app.get("/api/health")
 def health():
     return {"status": "ok"}

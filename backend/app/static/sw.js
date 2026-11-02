@@ -1,4 +1,4 @@
-const CACHE = "pixbill-v10";
+const CACHE = "pixbill-v11";
 const SHELL = ["/", "/app.js", "/styles.css", "/vendor/chart.umd.js", "/manifest.webmanifest", "/icons/icon-192.png", "/fonts/manrope-latin-wght-normal.woff2", "/fonts/manrope-latin-ext-wght-normal.woff2", "/fonts/ibm-plex-mono-latin-500-normal.woff2", "/fonts/ibm-plex-mono-latin-600-normal.woff2"];
 
 self.addEventListener("install", (e) => {
@@ -17,7 +17,7 @@ self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== "GET" || url.pathname.startsWith("/api/")) return;
   const network = Promise.race([
-    fetch(e.request),
+    fetch(e.request, { cache: "no-cache" }),
     new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 4000)),
   ]);
   e.respondWith(

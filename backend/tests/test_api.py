@@ -390,3 +390,8 @@ def test_pdf_receipt_read_from_text(client, monkeypatch):
 def test_broken_pdf_rejected(client):
     r = client.post("/api/receipts", files={"file": ("x.pdf", b"%PDF-1.4 to nie jest pdf", "application/pdf")})
     assert r.status_code == 415
+
+
+def test_app_files_are_revalidated(client):
+    assert client.get("/app.js").headers["cache-control"] == "no-cache"
+    assert "cache-control" not in client.get("/api/health").headers
