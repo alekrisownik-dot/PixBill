@@ -50,10 +50,12 @@ class OcrError(Exception):
     pass
 
 
-def prepare_image(path: Path, max_side: int) -> bytes:
+def prepare_image(path: Path, max_pixels: int) -> bytes:
     with Image.open(path) as img:
         img = ImageOps.exif_transpose(img).convert("RGB")
-        img.thumbnail((max_side, max_side))
+        scale = (max_pixels / (img.width * img.height)) ** 0.5
+        if scale < 1:
+            img = img.resize((round(img.width * scale), round(img.height * scale)), Image.LANCZOS)
         buf = io.BytesIO()
         img.save(buf, format="JPEG", quality=90)
         return buf.getvalue()
@@ -150,7 +152,7 @@ def salvage(text: str) -> dict | None:
 
 
 def read_receipt(path: Path) -> tuple[dict, str]:
-    image_b64 = base64.b64encode(prepare_image(path, get_settings().ocr_max_side)).decode()
+    image_b64 = base64.b64encode(prepare_image(path, get_settings().ocr_max_pixels)).decode()
     data = normalize(ask(PROMPT, [image_b64]))
     return data, raw_text(data)
 

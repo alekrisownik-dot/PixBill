@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     ollama_num_ctx: int = 8192
     ollama_num_predict: int = 1024
     ollama_keep_alive: str = "30m"
-    ocr_max_side: int = 1280
+    ocr_max_pixels: int = 1_100_000
     photo_retention_days: int = 10
     cleanup_interval_seconds: int = 3600
 
