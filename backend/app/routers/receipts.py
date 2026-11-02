@@ -13,7 +13,7 @@ from ..config import get_settings
 from ..db import get_db, new_session
 from ..items import fold, set_items
 from ..models import Category, Expense, Receipt
-from ..ocr import ollama, pdf, text_receipt
+from ..ocr import ollama, pdf, tesseract, text_receipt
 from ..schemas import ExpenseOut, ItemIn, ReceiptOut, ReceiptUpdate
 
 router = APIRouter(prefix="/api/receipts", tags=["receipts"])
@@ -84,16 +84,21 @@ def run_ocr(receipt_id: int) -> None:
         receipt = db.get(Receipt, receipt_id)
         if receipt is None or receipt.photo_path is None:
             return
+        photo = get_settings().photos_dir / receipt.photo_path
         from_text = ollama.has_text(receipt.pdf_text)
-        parsed = text_receipt.parse(receipt.pdf_text) if from_text else None
-        receipt.ocr_engine = "tekst:pdf" if parsed else f"ollama:{get_settings().ollama_model}" + (":pdf" if from_text else "")
+        text = receipt.pdf_text if from_text else tesseract.read_text(photo)
+        parsed = text_receipt.parse(text) if text else None
+        if parsed:
+            receipt.ocr_engine = "tekst:pdf" if from_text else "tesseract"
+        else:
+            receipt.ocr_engine = f"ollama:{get_settings().ollama_model}" + (":pdf" if from_text else "")
         try:
             if parsed:
-                result, raw = parsed, receipt.pdf_text
+                result, raw = parsed, text
             elif from_text:
                 result, raw = ollama.read_receipt_text(receipt.pdf_text)
             else:
-                result, raw = ollama.read_receipt(get_settings().photos_dir / receipt.photo_path)
+                result, raw = ollama.read_receipt(photo)
         except Exception as exc:
             log.warning("OCR paragonu %s nie powiódł się: %s", receipt_id, exc)
             receipt.status = "failed"

@@ -17,9 +17,11 @@ TOTAL_PATTERNS = [
     rf"RAZEM\s*:?\s*(?:PLN)?\s*({AMOUNT})",
 ]
 ITEM = re.compile(
-    rf"^(?P<name>.*?)\s*(?P<qty>\d+(?:[,.]\d{{1,3}})?)\s*(?:szt\.?|kg|l)?\s*[x×*]\s*(?P<unit>{AMOUNT})\s*=?\s*(?P<total>{AMOUNT})\s*[A-G]?$",
+    rf"^(?P<name>.*?)\s*(?P<qty>\d+(?:[,.]\d{{1,3}})?)\s*(?:szt\.?|kg|l)?\s*[x×*]\s*[—–-]?\s*(?P<unit>{AMOUNT})"
+    rf"\s*=?\s*(?P<total>-?\d+(?:[,.]\d{{2}})?)\s*[A-G]?$",
     re.IGNORECASE,
 )
+VAT_TAIL = re.compile(r"\s+(?:brak|[^\s\d]{1,2})$", re.IGNORECASE)
 DISCOUNT = re.compile(rf"^(?P<name>(?:rabat|upust|obni[żz]ka|promocja|zni[żz]ka|opust)\b.*?)\s+(?P<total>-{AMOUNT})\s*[A-G]?$", re.IGNORECASE)
 DATES = [
     (re.compile(r"\b(20\d{2})-(\d{2})-(\d{2})\b"), (0, 1, 2)),
@@ -62,6 +64,23 @@ def find_merchant(lines: list[str]) -> str | None:
     return lines[0][:80] if lines else None
 
 
+def line_price(match: re.Match) -> int:
+    qty = float(match.group("qty").replace(",", "."))
+    computed = round(qty * parse_amount(match.group("unit")))
+    printed = match.group("total")
+    if re.search(r"[,.]\d{2}$", printed) and abs(parse_amount(printed) - computed) <= 2:
+        return parse_amount(printed)
+    return computed
+
+
+def item_name(raw: str, previous: str) -> str:
+    name = VAT_TAIL.sub("", raw.strip(" .:-")).strip(" .:-,")
+    letters = len(re.sub(r"[^A-Za-zÀ-ž]", "", name))
+    if letters < 3 or (previous and letters < 5):
+        return previous
+    return name
+
+
 def find_items(lines: list[str]) -> list[dict]:
     items = []
     previous = ""
@@ -70,17 +89,20 @@ def find_items(lines: list[str]) -> list[dict]:
             break
         match = ITEM.match(line)
         if match:
-            name = match.group("name").strip(" .:-") or previous
+            name = item_name(match.group("name"), previous)
             if name:
-                items.append({"name": name, "price_grosze": parse_amount(match.group("total"))})
+                items.append({"name": name, "price_grosze": line_price(match)})
             previous = ""
             continue
         match = DISCOUNT.match(line)
         if match:
-            items.append({"name": match.group("name").strip(), "price_grosze": parse_amount(match.group("total"))})
+            name = match.group("name").strip()
+            if items and name.casefold() == "rabat" and items[-1]["price_grosze"] > 0:
+                name = f"Rabat: {items[-1]['name']}"
+            items.append({"name": name, "price_grosze": parse_amount(match.group("total"))})
             previous = ""
             continue
-        previous = line
+        previous = line if re.search(r"[A-Za-zÀ-ž]{3}", line) else previous
     return items
 
 

@@ -3,7 +3,7 @@
 [![Testy](https://github.com/alekrisownik-dot/PixBill/actions/workflows/tests.yml/badge.svg)](https://github.com/alekrisownik-dot/PixBill/actions/workflows/tests.yml)
 
 Domowa aplikacja do zliczania miesięcznych wydatków ze zdjęć paragonów i ręcznych wpisów.
-Działa na własnym serwerze, paragony odczytuje lokalny model w Ollamie, a dostęp jest wyłącznie przez Tailscale.
+Działa na własnym serwerze, paragony odczytuje lokalnie Tesseract (z modelem w Ollamie jako zapasem), a dostęp jest wyłącznie przez Tailscale.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/hero-dark.png">
@@ -12,7 +12,7 @@ Działa na własnym serwerze, paragony odczytuje lokalny model w Ollamie, a dost
 
 ## Co potrafi
 
-- **Paragon ze zdjęcia.** Robisz zdjęcie, a model odczytuje sklep, datę, sumę i pozycje. Przed zapisaniem sprawdzasz i poprawiasz dane.
+- **Paragon ze zdjęcia.** Robisz zdjęcie, a aplikacja w kilka sekund odczytuje sklep, datę, sumę i pozycje razem z rabatami. Gdy tekst jest nieczytelny, pomaga model w Ollamie. Przed zapisaniem sprawdzasz i poprawiasz dane.
 - **Pozycje i ceny produktów.** Widać, ile wydajesz na konkretne produkty i jak zmieniała się ich cena między zakupami.
 - **Wykresy i porównania.** Podział miesiąca na sekcje, zmiana względem poprzedniego miesiąca i trend z ostatnich 12 miesięcy.
 - **Własne sekcje i opłaty stałe.** Czynsz albo internet dodajesz raz, a aplikacja co miesiąc sama dopisuje je do wydatków.
@@ -45,7 +45,7 @@ Ma tryb jasny i ciemny, który dobiera się do ustawień telefonu.
   - logowanie hasłem (`POST /api/login`)
   - sekcje: lista, dodawanie, edycja, archiwizacja (`/api/categories`)
   - wydatki: ręczne dodawanie z opisem i sekcją, filtrowanie po miesiącu i sekcji (`/api/expenses`)
-  - paragony: wgranie zdjęcia, odczyt w tle przez Ollamę, ekran weryfikacji i zatwierdzenie (`/api/receipts`)
+  - paragony: wgranie zdjęcia, odczyt w tle (Tesseract, a w razie potrzeby Ollama), ekran weryfikacji i zatwierdzenie (`/api/receipts`)
   - statystyki: suma miesiąca, podział na sekcje, porównanie z poprzednim miesiącem, trend (`/api/stats`)
   - wyszukiwanie wydatków (`/api/expenses/search`)
   - produkty z paragonów i historia cen (`/api/products`)

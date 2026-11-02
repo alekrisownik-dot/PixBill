@@ -458,3 +458,34 @@ def test_ocr_cuts_repeating_block():
     assert [i["name"] for i in result["items"]] == ["Cukinia", "Papryka", "Winogrono", "Awokado"]
     pair = [{"name": "Bułka", "price": 1.25}, {"name": "Bułka", "price": 1.25}]
     assert len(ollama.normalize({"items": pair})["items"]) == 2
+
+
+def test_photo_read_by_tesseract_first(client, monkeypatch):
+    from app.ocr import tesseract
+
+    text = "\n".join([
+        "Biedronka",
+        "05.11.2026 12:00",
+        "Nazwa PTU Ilość Cena Wartość",
+        "Jogurt naturalny 400g C 2.000 x 3,49 6,98",
+        "Rabat -1,00",
+        "5,98",
+        "Bulki pszenne c 4.000 x 0,79 316",
+        "Pomidory",
+        "luz, c 0.512 x — 9,99 5,11",
+        "Sprzedaż opodatkowana C 14,25",
+        "Suma PLN 14,25",
+    ])
+    monkeypatch.setattr(tesseract, "read_text", lambda path: text)
+    monkeypatch.setattr(ollama, "read_receipt", lambda path: pytest.fail("czytelne zdjęcie nie powinno iść do modelu"))
+    r = client.post("/api/receipts", files={"file": ("p.jpg", jpeg_bytes(), "image/jpeg")})
+    receipt = client.get(f"/api/receipts/{r.json()['id']}").json()
+    assert receipt["ocr_engine"] == "tesseract"
+    result = receipt["ocr_result"]
+    assert (result["merchant"], result["date"], result["total_grosze"]) == ("Biedronka", "2026-11-05", 1425)
+    assert [(i["name"], i["price_grosze"]) for i in result["items"]] == [
+        ("Jogurt naturalny 400g", 698),
+        ("Rabat: Jogurt naturalny 400g", -100),
+        ("Bulki pszenne", 316),
+        ("Pomidory", 511),
+    ]
