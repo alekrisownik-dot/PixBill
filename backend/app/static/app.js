@@ -831,7 +831,9 @@ async function viewExpense(id) {
   const f = await expenseForm({
     initial: expense,
     submitLabel: "Zapisz zmiany",
-    extraButtons: `<button type="button" class="btn danger" id="del">Usuń wydatek</button>`,
+    extraButtons: `${receipt?.has_photo ? `<button type="button" class="btn" id="reopen">${icon("repeat")} Odczytaj paragon od nowa</button>` : ""}
+      ${receipt ? `<button type="button" class="btn danger" id="del-receipt">Usuń cały paragon</button>` : ""}
+      <button type="button" class="btn danger" id="del">Usuń wydatek</button>`,
     onSubmit: async (data) => {
       await api(`/api/expenses/${id}`, { method: "PATCH", body: data });
       toast("Zapisano");
@@ -846,7 +848,23 @@ async function viewExpense(id) {
     await api(`/api/expenses/${id}`, { method: "DELETE" });
     toast("Usunięto");
     location.hash = "#/expenses";
-  };
+  };  const reopen = document.getElementById("reopen");
+  if (reopen) {
+    reopen.onclick = async () => {
+      if (!confirm("Odczytać paragon od nowa? Wydatki z tego paragonu zostaną usunięte, a paragon wróci do sprawdzenia.")) return;
+      await api(`/api/receipts/${receipt.id}/reopen`, { method: "POST" });
+      location.hash = `#/receipt/${receipt.id}`;
+    };
+  }
+  const delReceipt = document.getElementById("del-receipt");
+  if (delReceipt) {
+    delReceipt.onclick = async () => {
+      if (!confirm("Usunąć cały paragon razem ze zdjęciem i wszystkimi wydatkami z niego?")) return;
+      await api(`/api/receipts/${receipt.id}`, { method: "DELETE" });
+      toast("Usunięto paragon");
+      location.hash = "#/expenses";
+    };
+  }
 }
 
 function receiptPhotoCard(r, scanning = false) {

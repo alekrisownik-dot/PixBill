@@ -536,3 +536,19 @@ def test_receipt_split_into_sections(client, monkeypatch):
     assert client.get(f"/api/receipts/{rid}").json()["amount_grosze"] == 5000
     summary = client.get("/api/stats/month", params={"month": "2026-11"}).json()
     assert summary["total_grosze"] == 5000
+
+
+def test_confirmed_receipt_reopen_and_delete(client, monkeypatch):
+    monkeypatch.setattr(ollama, "read_receipt", lambda path: ({"merchant": "Lidl", "date": "2026-11-05", "total_grosze": 2000, "items": []}, ""))
+    food = client.get("/api/categories").json()[0]["id"]
+    rid = client.post("/api/receipts", files={"file": ("p.jpg", jpeg_bytes(), "image/jpeg")}).json()["id"]
+    body = {"amount_grosze": 2000, "spent_on": "2026-11-05", "category_id": food}
+    assert client.post(f"/api/receipts/{rid}/confirm", json=body).status_code == 201
+    reopened = client.post(f"/api/receipts/{rid}/reopen")
+    assert reopened.status_code == 200
+    assert client.get(f"/api/receipts/{rid}").json()["status"] == "processed"
+    assert client.get("/api/expenses", params={"month": "2026-11"}).json() == []
+    assert client.post(f"/api/receipts/{rid}/confirm", json=body).status_code == 201
+    assert client.delete(f"/api/receipts/{rid}").status_code == 204
+    assert client.get(f"/api/receipts/{rid}").status_code == 404
+    assert client.get("/api/expenses", params={"month": "2026-11"}).json() == []

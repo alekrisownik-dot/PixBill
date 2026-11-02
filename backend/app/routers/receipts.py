@@ -230,15 +230,34 @@ def confirm_receipt(receipt_id: int, data: ConfirmIn, db: Session = Depends(get_
     return expenses[0]
 
 
+def drop_expenses(db: Session, receipt: Receipt) -> None:
+    for expense in receipt_expenses(receipt):
+        db.delete(expense)
+    db.flush()
+
+
 @router.delete("/{receipt_id}", status_code=204)
 def delete_receipt(receipt_id: int, db: Session = Depends(get_db)):
     receipt = get_receipt_or_404(db, receipt_id)
-    if receipt.status == "confirmed":
-        raise HTTPException(409, "Zatwierdzony paragon usuwa się razem z wydatkiem")
+    drop_expenses(db, receipt)
     if receipt.photo_path:
         (get_settings().photos_dir / receipt.photo_path).unlink(missing_ok=True)
     db.delete(receipt)
     db.commit()
+
+
+@router.post("/{receipt_id}/reopen", response_model=ReceiptOut)
+def reopen_receipt(receipt_id: int, background: BackgroundTasks, db: Session = Depends(get_db)):
+    receipt = get_receipt_or_404(db, receipt_id)
+    if receipt.photo_path is None:
+        raise HTTPException(409, "Zdjęcie paragonu zostało już usunięte, więc nie da się go odczytać ponownie")
+    drop_expenses(db, receipt)
+    receipt.status = "pending"
+    receipt.confirmed_at = None
+    db.commit()
+    db.refresh(receipt)
+    background.add_task(run_ocr, receipt.id)
+    return to_out(receipt)
 
 
 @router.patch("/{receipt_id}", response_model=ReceiptOut)
