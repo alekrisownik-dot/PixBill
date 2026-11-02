@@ -39,7 +39,8 @@ class Receipt(Base):
     keep_photo: Mapped[bool] = mapped_column(Boolean, default=False)
     pdf_text: Mapped[str | None] = mapped_column(Text)
 
-    expense: Mapped["Expense | None"] = relationship(back_populates="receipt")
+    expense: Mapped["Expense | None"] = relationship(back_populates="receipt", foreign_keys="Expense.receipt_id")
+    split_expenses: Mapped[list["Expense"]] = relationship(foreign_keys="Expense.split_receipt_id", order_by="Expense.id")
 
 
 class Expense(Base):
@@ -54,6 +55,7 @@ class Expense(Base):
     source: Mapped[str] = mapped_column(String(20), default="manual")
     category_id: Mapped[int] = mapped_column(ForeignKey("categories.id"))
     receipt_id: Mapped[int | None] = mapped_column(ForeignKey("receipts.id"), unique=True)
+    split_receipt_id: Mapped[int | None] = mapped_column(ForeignKey("receipts.id", ondelete="SET NULL"), index=True)
     recurring_id: Mapped[int | None] = mapped_column(ForeignKey("recurring_expenses.id", ondelete="SET NULL"))
     client_id: Mapped[str | None] = mapped_column(String(64), unique=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
@@ -62,7 +64,7 @@ class Expense(Base):
     )
 
     category: Mapped[Category] = relationship()
-    receipt: Mapped[Receipt | None] = relationship(back_populates="expense")
+    receipt: Mapped[Receipt | None] = relationship(back_populates="expense", foreign_keys=[receipt_id])
     items: Mapped[list["ExpenseItem"]] = relationship(
         back_populates="expense", cascade="all, delete-orphan", order_by="ExpenseItem.position"
     )

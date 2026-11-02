@@ -79,6 +79,7 @@ class ExpenseOut(BaseModel):
     source: str
     category_id: int
     receipt_id: int | None
+    split_receipt_id: int | None = None
     recurring_id: int | None
     created_at: datetime
     items: list[ItemOut] = []

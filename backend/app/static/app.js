@@ -642,7 +642,7 @@ async function viewAdd() {
 
 const hasDeposit = (items) => (items || []).some((i) => foldText(i.name || "").includes("kaucj"));
 
-async function expenseForm({ initial = {}, submitLabel, onSubmit, extraButtons = "", keepPhoto = null }) {
+async function expenseForm({ initial = {}, submitLabel, onSubmit, extraButtons = "", keepPhoto = null, splitItems = false }) {
   const cats = await activeCategories();
   const selected = initial.category_id ?? null;
   const items = (initial.items || []).filter((i) => i.name);
@@ -661,7 +661,8 @@ async function expenseForm({ initial = {}, submitLabel, onSubmit, extraButtons =
       </div>
       <details class="items"${items.length ? " open" : ""}>
         <summary><span>Pozycje z paragonu</span><span class="small muted" id="items-sum"></span></summary>
-        <ul class="item-rows" id="item-rows"></ul>
+        ${splitItems ? `<div class="split-sum" id="split-sum" hidden></div>` : ""}
+        <ul class="item-rows${splitItems ? " with-cat" : ""}" id="item-rows"></ul>
         <button type="button" class="btn small-btn" id="add-item">${icon("plus")} Dodaj pozycję</button>
       </details>
       ${keepPhoto === null ? "" : `<label class="switch-row" for="keep"><span>${icon("bottle")}</span><span class="grow"><b>Paragon z kaucją</b><span class="small muted">Zdjęcie zostanie, dopóki sam go nie usuniesz</span></span><input type="checkbox" id="keep"${keepPhoto ? " checked" : ""}></label>`}
@@ -678,25 +679,82 @@ async function expenseForm({ initial = {}, submitLabel, onSubmit, extraButtons =
         chip.onclick = () => {
           categoryId = Number(chip.dataset.id);
           form.querySelectorAll("#cats .chip").forEach((c) => c.setAttribute("aria-pressed", c === chip));
+          updateSum();
         };
       });
       const rows = form.querySelector("#item-rows");
       const sumEl = form.querySelector("#items-sum");
+      const catOptions = (id) => cats.map((c) => `<option value="${c.id}"${c.id === id ? " selected" : ""}>${esc(c.name)}</option>`).join("");
+      const paintCat = (wrap) => {
+        const id = Number(wrap.querySelector("select").value);
+        wrap.querySelector(".cat-ic")?.remove();
+        wrap.insertAdjacentHTML("afterbegin", catTile(cats.find((c) => c.id === id)));
+      };
       const addRow = (item = {}) => {
         const li = document.createElement("li");
-        li.innerHTML = `<input class="i-name" maxlength="200" placeholder="Produkt" value="${esc(item.name || "")}">
+        const catId = cats.some((c) => c.id === item.category_id) ? item.category_id : categoryId;
+        li.innerHTML = `${splitItems ? `<label class="i-cat" aria-label="Sekcja pozycji"><select>${catOptions(catId)}</select></label>` : ""}
+          <input class="i-name" maxlength="200" placeholder="Produkt" value="${esc(item.name || "")}">
           <input class="i-price" inputmode="decimal" placeholder="0,00" value="${esc(fromGrosze(item.price_grosze))}">
           <button type="button" class="icon-btn i-del" aria-label="Usuń pozycję">${icon("x")}</button>`;
         li.querySelector(".i-del").onclick = () => (li.remove(), updateSum());
+        const wrap = li.querySelector(".i-cat");
+        if (wrap) {
+          paintCat(wrap);
+          wrap.querySelector("select").onchange = () => (paintCat(wrap), updateSum());
+        }
         rows.append(li);
         return li;
       };
       const readItems = () =>
         [...rows.children]
-          .map((li) => ({ name: li.querySelector(".i-name").value.trim(), price: li.querySelector(".i-price").value }))
+          .map((li) => ({
+            name: li.querySelector(".i-name").value.trim(),
+            price: li.querySelector(".i-price").value,
+            category_id: li.querySelector(".i-cat select") ? Number(li.querySelector(".i-cat select").value) : null,
+          }))
           .filter((i) => i.name || i.price.trim());
+      const splitGroups = (list, amount) => {
+        if (!splitItems || !list.length || !categoryId) return [];
+        const groups = new Map();
+        for (const i of list) {
+          const g = groups.get(i.category_id) || { category_id: i.category_id, amount_grosze: 0, items: [] };
+          g.amount_grosze += toGroszeSigned(i.price) || 0;
+          g.items.push({ name: i.name, price_grosze: toGroszeSigned(i.price), category_id: i.category_id });
+          groups.set(i.category_id, g);
+        }
+        const main = groups.get(categoryId) || { category_id: categoryId, amount_grosze: 0, items: [] };
+        groups.set(categoryId, main);
+        main.amount_grosze += amount - list.reduce((s, i) => s + (toGroszeSigned(i.price) || 0), 0);
+        for (const [id, g] of groups) {
+          if (id !== categoryId && g.amount_grosze <= 0) {
+            main.amount_grosze += g.amount_grosze;
+            main.items.push(...g.items);
+            groups.delete(id);
+          }
+        }
+        const result = [...groups.values()];
+        return result.length > 1 && result.every((g) => g.amount_grosze > 0) ? result : [];
+      };
+      const splitEl = form.querySelector("#split-sum");
+      const updateSplit = (list, amount) => {
+        if (!splitEl) return;
+        const groups = splitGroups(list, amount || 0);
+        splitEl.hidden = !groups.length;
+        splitEl.innerHTML = groups.length
+          ? `<div class="small muted">Zapisze się jako ${groups.length} ${groups.length < 5 ? "wydatki" : "wydatków"}:</div>` +
+            groups
+              .sort((a, b) => b.amount_grosze - a.amount_grosze)
+              .map((g) => {
+                const c = cats.find((x) => x.id === g.category_id);
+                return `<span class="split-chip"><span class="dot" style="background:${esc(c?.color || "#999")}"></span>${esc(c?.name || "")} <b class="num">${fmt(g.amount_grosze)}</b></span>`;
+              })
+              .join("")
+          : "";
+      };
       const updateSum = () => {
         const list = readItems();
+        updateSplit(list, toGrosze(form.amount.value));
         if (!list.length) return (sumEl.textContent = "opcjonalnie");
         const sum = list.reduce((s, i) => s + (toGroszeSigned(i.price) || 0), 0);
         const amount = toGrosze(form.amount.value);
@@ -727,7 +785,8 @@ async function expenseForm({ initial = {}, submitLabel, onSubmit, extraButtons =
             description: form.description.value.trim(),
             spent_on: form.spent_on.value,
             merchant: form.merchant.value.trim() || null,
-            items: itemList.map((i) => ({ name: i.name, price_grosze: toGroszeSigned(i.price) })),
+            items: itemList.map((i) => ({ name: i.name, price_grosze: toGroszeSigned(i.price), ...(i.category_id ? { category_id: i.category_id } : {}) })),
+            ...(splitItems ? { splits: splitGroups(itemList, amount) } : {}),
             ...(form.keep ? { keep_photo: form.keep.checked } : {}),
           });
         } catch (err) {
@@ -767,7 +826,8 @@ async function viewNewExpense() {
 async function viewExpense(id) {
   setChrome("Wydatek", { back: "#/expenses" });
   const expense = await api(`/api/expenses/${id}`);
-  const receipt = expense.receipt_id ? await api(`/api/receipts/${expense.receipt_id}`) : null;
+  const receiptId = expense.receipt_id || expense.split_receipt_id;
+  const receipt = receiptId ? await api(`/api/receipts/${receiptId}`) : null;
   const f = await expenseForm({
     initial: expense,
     submitLabel: "Zapisz zmiany",
@@ -978,6 +1038,7 @@ async function viewReceipt(id) {
       items: ocr.items || [],
     },
     keepPhoto: hasDeposit(ocr.items),
+    splitItems: true,
     submitLabel: "Zatwierdź i zapisz",
     extraButtons: `${failed ? `<button type="button" class="btn" id="retry">Spróbuj odczytać ponownie</button>` : ""}
       <button type="button" class="btn danger" id="discard">Odrzuć paragon</button>`,

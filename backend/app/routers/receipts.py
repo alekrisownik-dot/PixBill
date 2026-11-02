@@ -25,10 +25,17 @@ PDF_TYPES = {"application/pdf", "application/x-pdf"}
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 
 
+def receipt_expenses(receipt: Receipt) -> list[Expense]:
+    return ([receipt.expense] if receipt.expense else []) + list(receipt.split_expenses)
+
+
 def deposit_of(receipt: Receipt) -> int:
-    if receipt.expense is None:
-        return 0
-    return sum(i.price_grosze for i in receipt.expense.items if "kaucj" in i.product_key and i.price_grosze > 0)
+    return sum(
+        i.price_grosze
+        for expense in receipt_expenses(receipt)
+        for i in expense.items
+        if "kaucj" in i.product_key and i.price_grosze > 0
+    )
 
 
 def to_out(receipt: Receipt) -> ReceiptOut:
@@ -49,7 +56,7 @@ def to_out(receipt: Receipt) -> ReceiptOut:
         deposit_grosze=deposit_of(receipt),
         merchant=expense.merchant if expense else None,
         spent_on=expense.spent_on if expense else None,
-        amount_grosze=expense.amount_grosze if expense else None,
+        amount_grosze=sum(e.amount_grosze for e in receipt_expenses(receipt)) if expense else None,
     )
 
 
@@ -179,6 +186,12 @@ def retry_ocr(receipt_id: int, background: BackgroundTasks, db: Session = Depend
     return to_out(receipt)
 
 
+class SplitIn(BaseModel):
+    category_id: int
+    amount_grosze: int = Field(gt=0)
+    items: list[ItemIn] = Field(default_factory=list, max_length=200)
+
+
 class ConfirmIn(BaseModel):
     amount_grosze: int = Field(gt=0)
     spent_on: date
@@ -187,6 +200,7 @@ class ConfirmIn(BaseModel):
     merchant: str | None = Field(default=None, max_length=200)
     items: list[ItemIn] = Field(default_factory=list, max_length=200)
     keep_photo: bool = False
+    splits: list[SplitIn] = Field(default_factory=list, max_length=20)
 
 
 @router.post("/{receipt_id}/confirm", response_model=ExpenseOut, status_code=201)
@@ -194,16 +208,26 @@ def confirm_receipt(receipt_id: int, data: ConfirmIn, db: Session = Depends(get_
     receipt = get_receipt_or_404(db, receipt_id)
     if receipt.status == "confirmed":
         raise HTTPException(409, "Paragon jest już zatwierdzony")
-    if db.get(Category, data.category_id) is None:
-        raise HTTPException(422, "Nie ma takiej sekcji")
-    expense = Expense(**data.model_dump(exclude={"items", "keep_photo"}), source="receipt", receipt_id=receipt.id)
+    splits = data.splits or [SplitIn(category_id=data.category_id, amount_grosze=data.amount_grosze, items=data.items)]
+    if sum(s.amount_grosze for s in splits) != data.amount_grosze:
+        raise HTTPException(422, "Części paragonu nie sumują się do kwoty")
+    for split in splits:
+        if db.get(Category, split.category_id) is None:
+            raise HTTPException(422, "Nie ma takiej sekcji")
+    splits.sort(key=lambda s: s.amount_grosze, reverse=True)
+    common = data.model_dump(include={"spent_on", "description", "merchant"})
+    expenses = []
+    for index, split in enumerate(splits):
+        link = {"receipt_id": receipt.id} if index == 0 else {"split_receipt_id": receipt.id}
+        expense = Expense(**common, **link, amount_grosze=split.amount_grosze, category_id=split.category_id, source="receipt")
+        set_items(expense, split.items)
+        db.add(expense)
+        expenses.append(expense)
     receipt.keep_photo = data.keep_photo
-    set_items(expense, data.items)
     receipt.status = "confirmed"
     receipt.confirmed_at = datetime.now(timezone.utc)
-    db.add(expense)
     db.commit()
-    return expense
+    return expenses[0]
 
 
 @router.delete("/{receipt_id}", status_code=204)

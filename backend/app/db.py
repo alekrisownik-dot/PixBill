@@ -84,6 +84,7 @@ NEW_COLUMNS = [
     ("categories", "budget_grosze", "INTEGER", False),
     ("receipts", "pdf_text", "TEXT", False),
     ("expense_items", "category_id", "INTEGER REFERENCES categories(id)", False),
+    ("expenses", "split_receipt_id", "INTEGER REFERENCES receipts(id)", False),
 ]
 
 

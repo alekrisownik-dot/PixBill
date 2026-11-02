@@ -508,3 +508,31 @@ def test_receipt_items_get_sections(client, monkeypatch):
     result = client.get(f"/api/receipts/{r.json()['id']}").json()["ocr_result"]
     assert [i["category_id"] for i in result["items"]] == [cats["Chemia i dom"], cats["Chemia i dom"], cats["Spożywcze"]]
     assert result["suggested_category_id"] == cats["Chemia i dom"]
+
+
+def test_receipt_split_into_sections(client, monkeypatch):
+    monkeypatch.setattr(ollama, "read_receipt", lambda path: ({"merchant": "Biedronka", "date": "2026-11-05", "total_grosze": 5000, "items": []}, ""))
+    cats = {c["name"]: c["id"] for c in client.get("/api/categories").json()}
+    food, home = cats["Spożywcze"], cats["Chemia i dom"]
+    rid = client.post("/api/receipts", files={"file": ("p.jpg", jpeg_bytes(), "image/jpeg")}).json()["id"]
+    body = {
+        "amount_grosze": 5000,
+        "spent_on": "2026-11-05",
+        "category_id": food,
+        "merchant": "Biedronka",
+        "splits": [
+            {"category_id": home, "amount_grosze": 1500, "items": [{"name": "Znicz", "price_grosze": 1500, "category_id": home}]},
+            {"category_id": food, "amount_grosze": 3500, "items": [{"name": "Mleko", "price_grosze": 3500, "category_id": food}]},
+        ],
+    }
+    bad = client.post(f"/api/receipts/{rid}/confirm", json={**body, "amount_grosze": 4000})
+    assert bad.status_code == 422
+    main = client.post(f"/api/receipts/{rid}/confirm", json=body)
+    assert main.status_code == 201
+    assert (main.json()["category_id"], main.json()["amount_grosze"], main.json()["receipt_id"]) == (food, 3500, rid)
+    expenses = client.get("/api/expenses", params={"month": "2026-11"}).json()
+    other = next(e for e in expenses if e["category_id"] == home)
+    assert (other["amount_grosze"], other["split_receipt_id"], other["merchant"]) == (1500, rid, "Biedronka")
+    assert client.get(f"/api/receipts/{rid}").json()["amount_grosze"] == 5000
+    summary = client.get("/api/stats/month", params={"month": "2026-11"}).json()
+    assert summary["total_grosze"] == 5000
