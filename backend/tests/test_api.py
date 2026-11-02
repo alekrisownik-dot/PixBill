@@ -1,6 +1,7 @@
 import io
 from datetime import datetime, timedelta, timezone
 
+import pytest
 from PIL import Image
 
 from app.ocr import ollama
@@ -341,3 +342,51 @@ def test_ocr_request_limits_output(monkeypatch, tmp_path):
     assert sent["options"]["num_ctx"] >= 8192
     assert sent["options"]["num_predict"] > 0
     assert "Chleb 5.00" in raw
+
+
+def pdf_bytes(lines: list[str]) -> bytes:
+    stream = "BT /F1 12 Tf 20 280 Td 14 TL " + " ".join(f"({line}) '" for line in lines) + " ET"
+    objects = [
+        "<< /Type /Catalog /Pages 2 0 R >>",
+        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 300] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
+        f"<< /Length {len(stream)} >>\nstream\n{stream}\nendstream",
+        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    ]
+    out = "%PDF-1.4\n"
+    offsets = []
+    for number, body in enumerate(objects, start=1):
+        offsets.append(len(out))
+        out += f"{number} 0 obj\n{body}\nendobj\n"
+    xref = len(out)
+    out += f"xref\n0 {len(objects) + 1}\n0000000000 65535 f \n"
+    out += "".join(f"{offset:010d} 00000 n \n" for offset in offsets)
+    out += f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n"
+    return out.encode("latin-1")
+
+
+def test_pdf_receipt_read_from_text(client, monkeypatch):
+    seen = {}
+
+    def fake_text(text):
+        seen["text"] = text
+        return {"merchant": "Biedronka", "date": "2026-11-01", "total_grosze": 1299, "items": []}, text
+
+    monkeypatch.setattr(ollama, "read_receipt_text", fake_text)
+    monkeypatch.setattr(ollama, "read_receipt", lambda path: pytest.fail("PDF z tekstem nie powinien iść do modelu obrazowego"))
+    content = pdf_bytes(["JERONIMO MARTINS POLSKA", "Biedronka nr 1234", "Chleb 4,99", "SUMA PLN 12,99"])
+    r = client.post("/api/receipts", files={"file": ("e-paragon.pdf", content, "application/pdf")})
+    assert r.status_code == 201
+    receipt = client.get(f"/api/receipts/{r.json()['id']}").json()
+    assert receipt["status"] == "processed"
+    assert receipt["ocr_result"]["total_grosze"] == 1299
+    assert receipt["ocr_engine"].endswith(":pdf")
+    assert "SUMA PLN 12,99" in seen["text"]
+    photo = client.get(f"/api/receipts/{receipt['id']}/photo")
+    assert photo.status_code == 200
+    assert photo.content[:2] == b"\xff\xd8"
+
+
+def test_broken_pdf_rejected(client):
+    r = client.post("/api/receipts", files={"file": ("x.pdf", b"%PDF-1.4 to nie jest pdf", "application/pdf")})
+    assert r.status_code == 415

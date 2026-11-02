@@ -20,6 +20,7 @@ Działa na własnym serwerze, paragony odczytuje lokalny model w Ollamie, a dost
 - **Kalendarz wydatków.** Siatka dni miesiąca pokazuje, kiedy wydajesz najwięcej.
 - **Podsumowanie miesiąca.** Suma, porównanie, największy wydatek oraz produkty, które podrożały i potaniały.
 - **Paragony z kaucją.** Ich zdjęcia nie kasują się same, dopóki ich nie usuniesz.
+- **Paragony PDF.** E-paragony, np. z aplikacji Biedronki, czytane prosto z tekstu, szybciej niż ze zdjęcia.
 - **Wykrywanie duplikatów.** Ostrzega, gdy ten sam paragon trafi drugi raz.
 - **Wyszukiwarka.** Szuka w sklepach, opisach i produktach ze wszystkich miesięcy, także bez polskich znaków.
 - **Eksport do Excela.** Plik .xlsx z dwoma arkuszami: wydatki i pozycje z paragonów.

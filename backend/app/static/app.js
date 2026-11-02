@@ -11,6 +11,7 @@ const esc = (s) =>
 const ICONS = {
   camera: '<path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.5"/>',
   image: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/>',
+  file: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/>',
   pencil: '<path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z"/><path d="m13.5 6.5 4 4"/>',
   repeat: '<path d="M17 2l3 3-3 3"/><path d="M4 11V9a4 4 0 0 1 4-4h12"/><path d="M7 22l-3-3 3-3"/><path d="M20 13v2a4 4 0 0 1-4 4H4"/>',
   upload: '<path d="M12 15V4"/><path d="m7 9 5-5 5 5"/><path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/>',
@@ -604,6 +605,8 @@ async function viewAdd() {
       <input id="photo" type="file" accept="image/*" capture="environment" hidden>
       <label class="action" for="gallery"><span class="ic">${icon("image")}</span><span><b>Zdjęcie z galerii</b><span class="sub">Paragon sfotografowany wcześniej</span></span></label>
       <input id="gallery" type="file" accept="image/*" hidden>
+      <label class="action" for="pdf"><span class="ic">${icon("file")}</span><span><b>Paragon PDF</b><span class="sub">E-paragon pobrany np. z aplikacji Biedronki</span></span></label>
+      <input id="pdf" type="file" accept="application/pdf,.pdf" hidden>
       <a class="action" href="#/new"><span class="ic">${icon("pencil")}</span><span><b>Wpisz ręcznie</b><span class="sub">Kwota, opis i sekcja</span></span></a>
       <a class="action" href="#/recurring/new"><span class="ic">${icon("repeat")}</span><span><b>Opłata stała</b><span class="sub">Czynsz, internet, abonament: co miesiąc</span></span></a>
     </div>
@@ -615,7 +618,8 @@ async function viewAdd() {
     const form = new FormData();
     form.append("file", file);
     form.append("client_id", client_id);
-    $view.innerHTML = `<div class="card empty"><div class="spinner"></div>Wysyłam zdjęcie…</div>`;
+    const isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name);
+    $view.innerHTML = `<div class="card empty"><div class="spinner"></div>${isPdf ? "Wysyłam plik PDF…" : "Wysyłam zdjęcie…"}</div>`;
     try {
       const r = await api("/api/receipts", { method: "POST", form });
       location.hash = `#/receipt/${r.id}`;
@@ -623,7 +627,7 @@ async function viewAdd() {
       if (err instanceof OfflineError) {
         await outboxAdd({ client_id, kind: "receipt", blob: file, name: file.name, type: file.type });
         updateOutboxBadge();
-        toast("Brak połączenia. Zdjęcie czeka w telefonie, wyślę je po połączeniu.");
+        toast(isPdf ? "Brak połączenia. Plik czeka w telefonie, wyślę go po połączeniu." : "Brak połączenia. Zdjęcie czeka w telefonie, wyślę je po połączeniu.");
         location.hash = "#/";
         return;
       }
@@ -633,6 +637,7 @@ async function viewAdd() {
   };
   document.getElementById("photo").onchange = (e) => upload(e.target);
   document.getElementById("gallery").onchange = (e) => upload(e.target);
+  document.getElementById("pdf").onchange = (e) => upload(e.target);
 }
 
 const hasDeposit = (items) => (items || []).some((i) => foldText(i.name || "").includes("kaucj"));

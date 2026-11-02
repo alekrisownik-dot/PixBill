@@ -13,13 +13,14 @@ from ..config import get_settings
 from ..db import get_db, new_session
 from ..items import fold, set_items
 from ..models import Category, Expense, Receipt
-from ..ocr import ollama
+from ..ocr import ollama, pdf
 from ..schemas import ExpenseOut, ItemIn, ReceiptOut, ReceiptUpdate
 
 router = APIRouter(prefix="/api/receipts", tags=["receipts"])
 log = logging.getLogger(__name__)
 
 ALLOWED_TYPES = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp", "image/heic": ".heic"}
+PDF_TYPES = {"application/pdf", "application/x-pdf"}
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 
 
@@ -83,9 +84,13 @@ def run_ocr(receipt_id: int) -> None:
         receipt = db.get(Receipt, receipt_id)
         if receipt is None or receipt.photo_path is None:
             return
-        receipt.ocr_engine = f"ollama:{get_settings().ollama_model}"
+        from_text = ollama.has_text(receipt.pdf_text)
+        receipt.ocr_engine = f"ollama:{get_settings().ollama_model}" + (":pdf" if from_text else "")
         try:
-            result, raw = ollama.read_receipt(get_settings().photos_dir / receipt.photo_path)
+            if from_text:
+                result, raw = ollama.read_receipt_text(receipt.pdf_text)
+            else:
+                result, raw = ollama.read_receipt(get_settings().photos_dir / receipt.photo_path)
         except Exception as exc:
             log.warning("OCR paragonu %s nie powiódł się: %s", receipt_id, exc)
             receipt.status = "failed"
@@ -118,16 +123,24 @@ async def upload_receipt(
         existing = db.scalar(select(Receipt).where(Receipt.client_id == client_id))
         if existing is not None:
             return to_out(existing)
-    suffix = ALLOWED_TYPES.get(file.content_type or "")
-    if suffix is None:
-        raise HTTPException(415, "Obsługiwane formaty: JPG, PNG, WEBP, HEIC")
     content = await file.read()
     if len(content) > MAX_UPLOAD_BYTES:
-        raise HTTPException(413, "Zdjęcie jest za duże (max 20 MB)")
+        raise HTTPException(413, "Plik jest za duży (max 20 MB)")
+    pdf_text = None
+    if file.content_type in PDF_TYPES or (file.filename or "").lower().endswith(".pdf") or pdf.is_pdf(content):
+        try:
+            content, pdf_text = pdf.read_pdf(content)
+        except pdf.PdfError as exc:
+            raise HTTPException(415, str(exc)) from exc
+        suffix = ".jpg"
+    else:
+        suffix = ALLOWED_TYPES.get(file.content_type or "")
+        if suffix is None:
+            raise HTTPException(415, "Obsługiwane formaty: JPG, PNG, WEBP, HEIC i PDF")
 
     name = f"{uuid.uuid4().hex}{suffix}"
     (get_settings().photos_dir / name).write_bytes(content)
-    receipt = Receipt(photo_path=name, client_id=client_id)
+    receipt = Receipt(photo_path=name, client_id=client_id, pdf_text=pdf_text)
     db.add(receipt)
     db.commit()
     background.add_task(run_ocr, receipt.id)

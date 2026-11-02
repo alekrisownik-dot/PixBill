@@ -37,6 +37,7 @@ class Receipt(Base):
     photo_deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     client_id: Mapped[str | None] = mapped_column(String(64), unique=True)
     keep_photo: Mapped[bool] = mapped_column(Boolean, default=False)
+    pdf_text: Mapped[str | None] = mapped_column(Text)
 
     expense: Mapped["Expense | None"] = relationship(back_populates="receipt")
 

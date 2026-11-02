@@ -66,38 +66,52 @@ def normalize(result: dict) -> dict:
     }
 
 
-def read_receipt(path: Path) -> tuple[dict, str]:
+MIN_PDF_TEXT = 30
+
+
+def ask(prompt: str, images: list[str]) -> dict:
     settings = get_settings()
-    image_b64 = base64.b64encode(prepare_image(path, settings.ocr_max_side)).decode()
+    body = {
+        "model": settings.ollama_model,
+        "prompt": prompt,
+        "format": "json",
+        "stream": False,
+        "keep_alive": settings.ollama_keep_alive,
+        "options": {
+            "temperature": 0,
+            "num_ctx": settings.ollama_num_ctx,
+            "num_predict": settings.ollama_num_predict,
+        },
+    }
+    if images:
+        body["images"] = images
     try:
-        response = httpx.post(
-            f"{settings.ollama_url}/api/generate",
-            json={
-                "model": settings.ollama_model,
-                "prompt": PROMPT,
-                "images": [image_b64],
-                "format": "json",
-                "stream": False,
-                "keep_alive": settings.ollama_keep_alive,
-                "options": {
-                    "temperature": 0,
-                    "num_ctx": settings.ollama_num_ctx,
-                    "num_predict": settings.ollama_num_predict,
-                },
-            },
-            timeout=settings.ollama_timeout_seconds,
-        )
+        response = httpx.post(f"{settings.ollama_url}/api/generate", json=body, timeout=settings.ollama_timeout_seconds)
         response.raise_for_status()
     except httpx.HTTPError as exc:
         raise OcrError(f"Ollama niedostępna: {exc}") from exc
 
     text = response.json().get("response", "")
     try:
-        result = json.loads(text)
+        return json.loads(text)
     except json.JSONDecodeError as exc:
         raise OcrError(f"Model nie zwrócił poprawnego JSON: {text[:200]}") from exc
-    data = normalize(result)
+
+
+def read_receipt(path: Path) -> tuple[dict, str]:
+    image_b64 = base64.b64encode(prepare_image(path, get_settings().ocr_max_side)).decode()
+    data = normalize(ask(PROMPT, [image_b64]))
     return data, raw_text(data)
+
+
+def read_receipt_text(text: str) -> tuple[dict, str]:
+    prompt = PROMPT.replace("Odczytaj zdjęcie paragonu", "Odczytaj tekst paragonu podany na końcu")
+    data = normalize(ask(f"{prompt}\n\nTekst paragonu:\n{text[:12000]}", []))
+    return data, text
+
+
+def has_text(text: str | None) -> bool:
+    return bool(text) and len(text.strip()) >= MIN_PDF_TEXT
 
 
 def raw_text(data: dict) -> str:
