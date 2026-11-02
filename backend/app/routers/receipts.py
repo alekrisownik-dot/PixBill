@@ -13,7 +13,7 @@ from ..config import get_settings
 from ..db import get_db, new_session
 from ..items import fold, set_items
 from ..models import Category, Expense, Receipt
-from ..ocr import ollama, pdf
+from ..ocr import ollama, pdf, text_receipt
 from ..schemas import ExpenseOut, ItemIn, ReceiptOut, ReceiptUpdate
 
 router = APIRouter(prefix="/api/receipts", tags=["receipts"])
@@ -85,9 +85,12 @@ def run_ocr(receipt_id: int) -> None:
         if receipt is None or receipt.photo_path is None:
             return
         from_text = ollama.has_text(receipt.pdf_text)
-        receipt.ocr_engine = f"ollama:{get_settings().ollama_model}" + (":pdf" if from_text else "")
+        parsed = text_receipt.parse(receipt.pdf_text) if from_text else None
+        receipt.ocr_engine = "tekst:pdf" if parsed else f"ollama:{get_settings().ollama_model}" + (":pdf" if from_text else "")
         try:
-            if from_text:
+            if parsed:
+                result, raw = parsed, receipt.pdf_text
+            elif from_text:
                 result, raw = ollama.read_receipt_text(receipt.pdf_text)
             else:
                 result, raw = ollama.read_receipt(get_settings().photos_dir / receipt.photo_path)

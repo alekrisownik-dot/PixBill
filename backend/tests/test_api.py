@@ -374,14 +374,14 @@ def test_pdf_receipt_read_from_text(client, monkeypatch):
 
     monkeypatch.setattr(ollama, "read_receipt_text", fake_text)
     monkeypatch.setattr(ollama, "read_receipt", lambda path: pytest.fail("PDF z tekstem nie powinien iść do modelu obrazowego"))
-    content = pdf_bytes(["JERONIMO MARTINS POLSKA", "Biedronka nr 1234", "Chleb 4,99", "SUMA PLN 12,99"])
+    content = pdf_bytes(["JERONIMO MARTINS POLSKA", "Biedronka nr 1234", "Chleb 4,99", "Razem do oddania"])
     r = client.post("/api/receipts", files={"file": ("e-paragon.pdf", content, "application/pdf")})
     assert r.status_code == 201
     receipt = client.get(f"/api/receipts/{r.json()['id']}").json()
     assert receipt["status"] == "processed"
     assert receipt["ocr_result"]["total_grosze"] == 1299
     assert receipt["ocr_engine"].endswith(":pdf")
-    assert "SUMA PLN 12,99" in seen["text"]
+    assert "Chleb 4,99" in seen["text"]
     photo = client.get(f"/api/receipts/{receipt['id']}/photo")
     assert photo.status_code == 200
     assert photo.content[:2] == b"\xff\xd8"
@@ -395,3 +395,30 @@ def test_broken_pdf_rejected(client):
 def test_app_files_are_revalidated(client):
     assert client.get("/app.js").headers["cache-control"] == "no-cache"
     assert "cache-control" not in client.get("/api/health").headers
+
+
+def test_pdf_receipt_parsed_without_model(client, monkeypatch):
+    monkeypatch.setattr(ollama, "read_receipt_text", lambda text: pytest.fail("czytelny PDF nie powinien iść do modelu"))
+    lines = [
+        "JERONIMO MARTINS POLSKA S.A.",
+        "Biedronka nr 4521",
+        "2026-11-01 nr wydr.123456",
+        "PARAGON FISKALNY",
+        "Chleb zytni 500g 1 x5,49 5,49C",
+        "Mleko 3,2% 1L",
+        "2 x3,89 7,78C",
+        "Rabat Moja Biedronka -1,00 C",
+        "SUMA PTU 0,58",
+        "SUMA PLN 12,27",
+    ]
+    r = client.post("/api/receipts", files={"file": ("e-paragon.pdf", pdf_bytes(lines), "application/pdf")})
+    receipt = client.get(f"/api/receipts/{r.json()['id']}").json()
+    assert receipt["status"] == "processed"
+    assert receipt["ocr_engine"] == "tekst:pdf"
+    result = receipt["ocr_result"]
+    assert (result["merchant"], result["date"], result["total_grosze"]) == ("Biedronka", "2026-11-01", 1227)
+    assert [(i["name"], i["price_grosze"]) for i in result["items"]] == [
+        ("Chleb zytni 500g", 549),
+        ("Mleko 3,2% 1L", 778),
+        ("Rabat Moja Biedronka", -100),
+    ]
