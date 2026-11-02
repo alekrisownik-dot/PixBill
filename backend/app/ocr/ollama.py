@@ -21,7 +21,27 @@ Odczytaj zdjęcie paragonu i zwróć WYŁĄCZNIE JSON w formacie:
 W "items" wpisz każdą kupioną pozycję po kolei: nazwę tak jak na paragonie i cenę za cały wiersz
 (np. "2 x 3,49 6,98" daje cenę 6.98). Pomiń literę stawki VAT po cenie. Rabat lub upust wpisz
 jako osobną pozycję z ujemną ceną. Kaucję za butelki lub puszki wpisz jako osobną pozycję z nazwą zawierającą słowo "kaucja". Nie wpisuj do "items" sumy, podatku PTU ani reszty.
+Każdy wiersz paragonu wpisz do "items" tylko raz i zakończ listę na ostatniej pozycji przed sumą.
 Suma to zwykle wiersz "SUMA PLN". Nie zgaduj: jeśli czegoś nie widać, wpisz null."""
+
+SCHEMA = {
+    "type": "object",
+    "properties": {
+        "merchant": {"type": ["string", "null"]},
+        "date": {"type": ["string", "null"]},
+        "total": {"type": ["string", "number", "null"]},
+        "items": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {"name": {"type": "string"}, "price": {"type": ["string", "number", "null"]}},
+                "required": ["name", "price"],
+            },
+        },
+    },
+    "required": ["merchant", "date", "total", "items"],
+}
+LOOP_RUN = 4
 
 register_heif_opener()
 
@@ -74,11 +94,12 @@ def ask(prompt: str, images: list[str]) -> dict:
     body = {
         "model": settings.ollama_model,
         "prompt": prompt,
-        "format": "json",
+        "format": SCHEMA,
         "stream": False,
         "keep_alive": settings.ollama_keep_alive,
         "options": {
             "temperature": 0,
+            "repeat_penalty": 1.1,
             "num_ctx": settings.ollama_num_ctx,
             "num_predict": settings.ollama_num_predict,
         },
@@ -95,7 +116,37 @@ def ask(prompt: str, images: list[str]) -> dict:
     try:
         return json.loads(text)
     except json.JSONDecodeError as exc:
-        raise OcrError(f"Model nie zwrócił poprawnego JSON: {text[:200]}") from exc
+        result = salvage(text)
+        if result is None:
+            raise OcrError(f"Model nie zwrócił poprawnego JSON: {text[:200]}") from exc
+        return result
+
+
+def field(text: str, name: str) -> str | None:
+    match = re.search(rf'"{name}"\s*:\s*(?:"([^"]*)"|(-?\d+(?:\.\d+)?))', text)
+    if not match:
+        return None
+    return match.group(1) if match.group(1) is not None else match.group(2)
+
+
+def drop_loop(items: list[dict]) -> list[dict]:
+    run = 1
+    for index in range(1, len(items)):
+        run = run + 1 if items[index] == items[index - 1] else 1
+        if run == LOOP_RUN:
+            return items[: index - LOOP_RUN + 2]
+    return items
+
+
+def salvage(text: str) -> dict | None:
+    items = [
+        json.loads(chunk)
+        for chunk in re.findall(r'\{\s*"name"\s*:\s*"[^"]*"\s*,\s*"price"\s*:\s*(?:"[^"]*"|-?\d+(?:\.\d+)?|null)\s*\}', text)
+    ]
+    result = {"merchant": field(text, "merchant"), "date": field(text, "date"), "total": field(text, "total"), "items": drop_loop(items)}
+    if result["total"] is None and not result["items"]:
+        return None
+    return result
 
 
 def read_receipt(path: Path) -> tuple[dict, str]:

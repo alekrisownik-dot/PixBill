@@ -422,3 +422,12 @@ def test_pdf_receipt_parsed_without_model(client, monkeypatch):
         ("Mleko 3,2% 1L", 778),
         ("Rabat Moja Biedronka", -100),
     ]
+
+
+def test_ocr_salvages_looping_output():
+    looped = ", ".join(['{"name": "Napój Cola 2l", "price": "10.95"}'] * 30)
+    text = '{"merchant": "Biedronka", "date": "2026-10-29", "total": "201.00", "items": [{"name": "Chleb", "price": 4.99}, ' + looped + ', {"name": "Nap'
+    result = ollama.normalize(ollama.salvage(text))
+    assert (result["merchant"], result["date"], result["total_grosze"]) == ("Biedronka", "2026-10-29", 20100)
+    assert [(i["name"], i["price_grosze"]) for i in result["items"]] == [("Chleb", 499), ("Napój Cola 2l", 1095)]
+    assert ollama.salvage("zupełnie nie json") is None
